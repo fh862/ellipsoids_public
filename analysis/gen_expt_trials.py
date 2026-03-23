@@ -423,7 +423,9 @@ class ExptTrialGeneration(SimulateTrialGivenWishart):
                     # Extract stimulus dimensions for the trial
                     trial_val = [trial_AEPsych["config"][s][0] for s in self.parnames]
                     # Derive xref and x1 based on par1, par2, par3 and par4 
-                    xref, x1, trial_val_report = self._derive_xref_x1(trial_idx, trial_val)
+                    xref, x1, trial_val_report = self._derive_xref_x1(trial_idx,
+                                                                      trial_val,
+                                                                      config_index=expt_idx)
                     # Get a response (can either be a simulated resp or from a real participant)
                     binaryResp = self._send_stim_and_wait_for_resp(trial_counter,
                                                                    trial_identity,

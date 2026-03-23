@@ -28,7 +28,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit"]
+dev = ["pre-commit", "pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# jax_enable_x64 must be set before JAX initialises; conftest.py handles this.
 
 [tool.ruff]
 line-length = 120

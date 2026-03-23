@@ -59,6 +59,7 @@ from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization
 from plotting.wishart_plotting import PlotSettingsBase 
 from analysis.utils_load import load_expt_data
 from analysis.cross_validation import expt_data
+from dconfig.config_4Ddata import DatasetConfig_4D
 
 #%%
 # -----------------------------------------------------------
@@ -68,39 +69,36 @@ from analysis.cross_validation import expt_data
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
     '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
-flag_load_datafile = True
 stim_dims = 2
 psyfield_dims = 4
-subN = 1
+subN = 15
 
-if flag_load_datafile:
-    #specify the file name
-    totalSessions = 12
-    nSessions = 7 #selected session
-    str_ext_s = f'_{nSessions}of{totalSessions}sessions' if nSessions < totalSessions else ''
-    path_str  = os.path.join(base_dir,'ELPS_analysis','Experiment_DataFiles',
-                             '4D_Expt_dichromats',f'sub{subN}') #4D_Expt_varyingBackground, pilot2
-else:
-    coloralg = 'CIE1994'
-    str_ext_s = ''
-    path_str  = os.path.join(base_dir,'META_analysis','Simulation_DataFiles', 
-                             f'{psyfield_dims}dTask', 'CIE')
-    file_name = f'Sim{psyfield_dims}dTask_colorDiscrimination_EAVC_6000Trials_'+\
-                f'300_300_300_5100_sub{subN}_gt{coloralg}.pkl'
+# choose one dataset
+dcfg = DatasetConfig_4D.human_ls_isolating(base_dir, subN)
+# dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
+# dcfg = DatasetConfig_4D.human_varying_background(base_dir, subN)
+# dcfg = DatasetConfig_4D.simulated_isoluminant(base_dir, subN)
+
+dcfg.print_summary()
+nSession = dcfg.nSession
+
+# modify anything if needed
+# dcfg.nSession = 7
+# dcfg.__post_init__()   # rerun only if you changed something that affects derived fields
 
 # Define the color plane and load for transformation matrices
-color_thres_data = color_thresholds(2, base_dir, plane_2D = 'Isoluminant plane') #Isoluminant plane #LSisolating plane
-color_thres_data.load_transformation_matrix(file_date = "02242025") #10062025, 02242025, 11172025"
+color_thres_data = color_thresholds(2, base_dir, plane_2D = dcfg.plane_2D) 
+color_thres_data.load_transformation_matrix(file_date = dcfg.file_date)  
 
 #specify figure name and path
 if flag_running_on_hpc:
     output_fileDir_fits = os.path.join(base_dir, 'hpc_sweeps', 'model_fitting',
-                                       coloralg if not flag_load_datafile else '',
+                                       dcfg.coloralg if not dcfg.flag_load_datafile else '',
                                        f'sub{subN}', f'{stim_dims}D{psyfield_dims}D')
     output_figDir_fits = os.path.join(output_fileDir_fits, 'figs')    
 else:
-    output_fileDir_fits = os.path.join(path_str,'fits')
-    output_figDir_fits = path_str.replace('DataFiles', 'FigFiles')
+    output_fileDir_fits = os.path.join(dcfg.path_str,'fits')
+    output_figDir_fits = dcfg.path_str.replace('DataFiles', 'FigFiles')
     
 # Create directories if they don't exist
 os.makedirs(output_figDir_fits, exist_ok=True)
@@ -111,24 +109,23 @@ pltSettings_base = PlotSettingsBase(fig_dir=output_figDir_fits, fontsize = 8)
 # -----------------------------------------------------------
 # SECTION 2: Load and organize the pilot data 
 # -----------------------------------------------------------
-#for adaptation expt only
-adaptation_cond_str = '' #'_gray'
-
 #we want to fit the Wishart model to the original dataset as well as bootstrapped
 #dataset with specified seed
 btst_seed = [None] #+ list(range(10)) 
 flag_btst = [False] #+ [True]*10 
 
 for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
-    str_ext = str_ext_s
+    str_ext = dcfg.str_ext_s
     if flag_btst_AEPsych: str_ext += f'_btst_AEPsych[{ll}]'
     
-    if flag_load_datafile:
+    if dcfg.flag_load_datafile:
         # Get file paths for all session data of the subject
         session_files, session_file_name_part1 = \
-            load_expt_data.get_all_sessions_file_names(subN, nSessions, path_str, 
-                                                       exptCond = '_4dExpt_Isoluminant plane', #'_4dExpt_LSisolating plane'
-                                                       str_ext = f'{adaptation_cond_str}_copy')
+            load_expt_data.get_all_sessions_file_names(subN, 
+                                                       nSession, 
+                                                       dcfg.path_str, 
+                                                       exptCond = dcfg.exptCond, 
+                                                       str_ext = f'{dcfg.adaptation_cond_str}_copy')
         
         # Load session data from the files
         data_allSessions = load_expt_data.load_data_all_sessions(session_files)
@@ -160,8 +157,8 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
         # Extract pregenerated Sobol data across all sessions
         xref_combined, x1_combined, y_combined = combined_data
     else:
-        session_file_name_part1 = file_name[:-4]
-        full_path = os.path.join(path_str, file_name)
+        session_file_name_part1 = dcfg.file_name[:-4]
+        full_path = os.path.join(dcfg.path_str, dcfg.file_name)
 
         with open(full_path, 'rb') as f:
             vars_dict = pickled.load(f)
@@ -201,7 +198,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
                                                     )
     
     # This array defines the opacity of markers in the plots, decreasing with more trials.
-    marker_alpha = [0.5, 0.3, 0.3] #[0.5, 0.3, 0.7]
+    marker_alpha = [0.3, 0.2, 0.2] #[0.5, 0.3, 0.7]
     # Define specific slices of data points to be visualized, ranging from very few to many.
     slc_datapoints_to_show_lb = [0, sum(nTrials_strat[:-1]), nTrials_AEPsych]
     slc_datapoints_to_show_ub = [sum(nTrials_strat[:-1]), nTrials_AEPsych, nTrials_forFitting]
@@ -211,7 +208,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
         # Construct a filename for each figure based on the plane and number of experiments.
         str_idx = f'{ub_i:05}total' if lb_i == 0 else f'{ub_i:05}total_from{lb_i:05}'
         fig_name = f"TrialPlacement_isothreshold_{color_thres_data.plane_2D}_"+\
-                    f"{psyfield_dims}DExpt_{str_idx}_sub{subN}{str_ext}{adaptation_cond_str}"
+                    f"{psyfield_dims}DExpt_{str_idx}_sub{subN}{str_ext}{dcfg.adaptation_cond_str}"
         pltSettings_tp = replace(pltSettings_tp,
                                  ref_markeralpha = marker_alpha[i],
                                  comp_markeralpha = marker_alpha[i],
@@ -230,14 +227,13 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
                                    )            
         ax.set_title(color_thres_data.plane_2D)
         # Save the figure as a PDF
-        #fig.savefig(os.path.join(output_figDir_fits, f"{fig_name}.pdf"), bbox_inches='tight')    
+        fig.savefig(os.path.join(output_figDir_fits, f"{fig_name}.pdf"), bbox_inches='tight')    
         plt.show()
     
     #%
     # -----------------------------------------------------------------------
     # SECTION 4: Fit the Wishart model
     # -----------------------------------------------------------------------
-    num_grid_pts = 7
     model = WishartProcessModel(
         5,         # Degree of the polynomial basis functions
         stim_dims, # Number of stimulus dimensions
@@ -295,8 +291,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     # SECTION 5: Compute model predictions (66.7% correct )
     # -------------------------------------------------------
     # Generate a multidimensional grid based on the number of color dimensions
-    grid_1d = jnp.linspace(-0.7, 0.7, num_grid_pts)
-    grid = jnp.stack(jnp.meshgrid(*[grid_1d for _ in range(model.num_dims)]), axis=-1)
+    grid = dcfg.grid
     # Compute the covariance matrices ('Sigmas') at each point in the grid using 
     # the model's compute_U function. 
     Sigmas_noise_grid = model.compute_Sigmas(model.compute_U(W_est, grid))
@@ -309,7 +304,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
                                             color_thres_data, 
                                             target_pC=target_pC,
                                             ngrid_bruteforce = 1000,
-                                            bds_bruteforce = [0.0005, 0.3]
+                                            bds_bruteforce = dcfg.bds_bruteforce
                                             )
     
     # batch compute 66.7% threshold contour based on estimated weight matrix
@@ -331,7 +326,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     # -----------------------------------------
     #specify figure name and path
     fig_name_part1 = f"Fitted_{session_file_name_part1}_decayRate{model.decay_rate}"+\
-        f"_varScaler{model.variance_scale}_nBasisDeg{model.degree}{str_ext}{adaptation_cond_str}" 
+        f"_varScaler{model.variance_scale}_nBasisDeg{model.degree}{str_ext}{dcfg.adaptation_cond_str}" 
     pred2D_settings = replace(Plot2DPredSettings(), **pltSettings_base.__dict__)
     pred2D_settings = replace(pred2D_settings, 
                               visualize_samples= False,

@@ -91,6 +91,14 @@ from analysis.color_thres import color_thresholds
 
 ---
 
+## AEPsych-dependent code
+
+The scripts under `aepsych/expt/` and `aepsych/sim/` require `aepsych==0.7.3`, which is not compatible with the JAX environment above.  A separate virtual environment and install procedure are needed for running or simulating experiments.
+
+*(Setup instructions to be added.)*
+
+---
+
 ## Pre-commit hooks
 
 This repository uses [pre-commit](https://pre-commit.com) for basic file hygiene.

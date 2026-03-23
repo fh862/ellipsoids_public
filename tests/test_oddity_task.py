@@ -25,7 +25,6 @@ search window [0.001, 0.5], confirmed by a quick sweep in probe_threshold.py.
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from analysis.ellipses_tools import ellParamsQ_to_covMat, fit_2d_isothreshold_contour
 from core import oddity_task
@@ -34,23 +33,24 @@ from core import oddity_task
 # Shared constants
 # ---------------------------------------------------------------------------
 NDIMS_COV = 2
-NDIMS_EXTRA = 3          # ndims_cov + extra_dims (1) as used in the paper
-NOISE_SCALE = 0.05       # U = scale * eye  →  Σ ≈ 0.0025 * I
+NDIMS_EXTRA = 3  # ndims_cov + extra_dims (1) as used in the paper
+NOISE_SCALE = 0.05  # U = scale * eye  →  Σ ≈ 0.0025 * I
 DIAG_TERM = 1e-4
-BANDWIDTH = 0.005        # smoothing parameter for approx_cdf
-TARGET_PC = 0.667        # 66.7 % correct = threshold
+BANDWIDTH = 0.005  # smoothing parameter for approx_cdf
+TARGET_PC = 0.667  # 66.7 % correct = threshold
 
-N_THETA = 8              # directions sampled around the unit circle
-NGRID = 50               # vector-length grid points per direction
-MC_SAMPLES = 500         # Monte Carlo samples per (direction, length) pair
+N_THETA = 8  # directions sampled around the unit circle
+NGRID = 50  # vector-length grid points per direction
+MC_SAMPLES = 500  # Monte Carlo samples per (direction, length) pair
 VEC_LENGTH_BOUNDS = (0.001, 0.50)  # search window; threshold ≈ 0.14
 
-CIRCULARITY_TOL = 0.25   # max allowed coefficient of variation across radii
+CIRCULARITY_TOL = 0.25  # max allowed coefficient of variation across radii
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_identity_U(batch: int) -> np.ndarray:
     """Return (batch, NDIMS_COV, NDIMS_EXTRA) array of scaled-identity U."""
@@ -77,9 +77,7 @@ def _estimate_threshold_radii(w_ref: np.ndarray, seed: int = 0) -> np.ndarray:
         w_comps = w_ref[None, :] + vec_lengths[:, None] * d[None, :]
         w_ref_rep = np.tile(w_ref, (NGRID, 1))
 
-        keys_i = jax.random.split(
-            jax.random.fold_in(jax.random.PRNGKey(seed), i), NGRID
-        )
+        keys_i = jax.random.split(jax.random.fold_in(jax.random.PRNGKey(seed), i), NGRID)
 
         pC = np.array(
             oddity_task.oddity_prediction(
@@ -104,6 +102,7 @@ def _estimate_threshold_radii(w_ref: np.ndarray, seed: int = 0) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_identity_noise_gives_circular_threshold():
     """
@@ -138,9 +137,7 @@ def test_identity_noise_threshold_covariance_is_isotropic():
     directions = np.column_stack([np.cos(thetas), np.sin(thetas)])
     w_comp_est = w_ref[:, None] + directions.T * radii[None, :]  # (2, N_THETA)
 
-    _, _, params_ell, _ = fit_2d_isothreshold_contour(
-        w_ref, w_comp_est, nTheta=200, flag_force_centered_ref=True
-    )
+    _, _, params_ell, _ = fit_2d_isothreshold_contour(w_ref, w_comp_est, nTheta=200, flag_force_centered_ref=True)
     Sigma_thres = np.array(ellParamsQ_to_covMat(*params_ell[2:]))
 
     eigvals = np.linalg.eigvalsh(Sigma_thres)

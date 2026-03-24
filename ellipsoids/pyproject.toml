@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit"]
+dev = ["pre-commit", "pytest"]
 
 # ---------------------------------------------------------------------------
 # Packaging — expose every functional subdirectory as an importable package

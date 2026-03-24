@@ -108,7 +108,7 @@ os.makedirs(output_dir, exist_ok=True)
 # -----------------------------------------------------------
 # Export threshold ellipses on the *coarse* grid:
 # Each row corresponds to one reference location in `grid`, with its 2x2 Sigma flattened.
-path_csv_thres = os.path.join(output_dir, f"Thres_ellipses_sub{subN}_grid5.csv")
+path_csv_thres = os.path.join(output_dir, f"Thres_ellipses_sub{subN}.csv")
 _, grid_flat, Sigmas_thres_flat_org = DataExport.export_ellipses_csv(grid=grid,
                                Sigmas=Sigmas_thres_grid_org,
                                grid_col="grid_ref",

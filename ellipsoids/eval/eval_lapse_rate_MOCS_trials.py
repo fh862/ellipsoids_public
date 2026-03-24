@@ -51,7 +51,7 @@ subN = extract_sub_number(file_name)
 # Number of sessions to analyze (selected session)
 # all subjects completed the same number of trials, but sub1 did them in less sessions
 ###################### NEED TO MODIFY ######################
-ndims = 3 #2 or 3
+ndims = 2 #2 or 3
 nSessions = 12 #10 or 12 for 2D/4D; 40 for 3D/6D
 ############################################################
 exptCond = '_6dExpt_RGBcube' if ndims == 3 else '_4dExpt_Isoluminant plane'

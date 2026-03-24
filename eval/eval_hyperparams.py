@@ -121,9 +121,9 @@ from analysis.utils_load import load_expt_data
 from analysis.cross_validation import CrossValidation
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
+from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
+    Plot2DPredSettings, add_CI_ellipses
 from plotting.wishart_plotting import PlotSettingsBase 
-from plotting.wishart_predictions_plotting import Plot2DPredSettings
 from plotting.modelperf_plotting import NFoldsCrossValidationVisualization, \
     PltVaryingHyperParamSettings
 
@@ -587,7 +587,7 @@ if not flag_running_on_hpc:
                 cm = color_thres_data.W2D_to_rgb(grid[i,j])
                 lbl = f'Full range of model predictions evaluated \nusing {total_folds}'+\
                     '-fold cross-validation' if (i == 0 and j == 0) else None
-                wishart_pred_vis_wCI.add_CI_ellipses(
+                add_CI_ellipses(
                     fitEll_min[i, j], fitEll_max[i, j], ax=ax_d,
                     cm=cm, label=lbl, lw_inner = 0, lw_outer=1, alpha=0.9
                 )

@@ -47,10 +47,10 @@ parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 from analysis.utils_load import select_file_and_get_path
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
+from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
+    add_CI_ellipses, Plot2DPredSettings
 from core.model_predictions import rerun_model_pred_wExisting_model
 from plotting.wishart_plotting import PlotSettingsBase 
-from plotting.wishart_predictions_plotting import Plot2DPredSettings
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs
 from analysis.model_performance import ModelPerformance
 
@@ -69,6 +69,10 @@ from analysis.model_performance import ModelPerformance
 # or data from the adaptation experiment with different adapting backgrounds
 # 'ELPS_analysis/Experiment_DataFiles/4D_Expt_varyingBackground/sub12/fits'
 # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub12_decayRate0.5_nBasisDeg5_blue.pkl' or gray
+
+# dichromats
+# 'ELPS_analysis/Experiment_DataFiles/4D_Expt_dichromats/sub15/fits'
+# 'Fitted_ColorDiscrimination_4dExpt_LSisolating plane_sub15_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
 input_fileDir_fits, file_name = select_file_and_get_path()
 
 # Construct the full path to the selected file
@@ -106,7 +110,7 @@ Assumptions:
 
 """
 
-num_grid_pts_desired = 7
+num_grid_pts_desired = 5
 flag_append_data = False
 
 # Construct the key name based on the desired grid size
@@ -184,8 +188,8 @@ else:
 #   - NBS_grid[i, j, r] stores the normalized Bures similarity between:
 #       Sigma_noise(original)[i, j]  vs  Sigma_noise(dataset r)[i, j]
 #     (NBS≈1 means nearly identical covariance shape/scale)
-grid_shape = [num_grid_pts_desired] * ndims
-params_ell_shape = grid_shape + [nDatasets, 5]
+grid_shape = grid.shape[:-1]
+params_ell_shape = grid_shape + (nDatasets, 5)
 params_ell = np.full(params_ell_shape, np.nan)
 
 full_path_others = []
@@ -247,9 +251,8 @@ for r in trange(nDatasets):
                     pickled.dump(vars_dict_others, f)
 
     # 5d) Store ellipse params and compute per-grid-point similarity
-    for i in range(num_grid_pts_desired):
-        for j in range(num_grid_pts_desired):
-            params_ell[i, j, r] = param_ell_r[i][j]
+    for idx in np.ndindex(grid_shape):
+        params_ell[*idx, r] = param_ell_r[idx[0]][idx[1]]
             
 #%%
 #---------------------------------------------------------------------------
@@ -268,11 +271,16 @@ if not flag_load_other_subjects:
         num_grid_pts_fine = grid_fine.shape[0]
     else:
         # Define the fine prediction grid
-        num_grid_pts_fine = 103
-        grid_fine = jnp.stack(
-            jnp.meshgrid(*[jnp.linspace(-0.85, 0.85, num_grid_pts_fine) for _ in range(ndims)]),
-            axis=-1
-        )
+        # num_grid_pts_fine = 103
+        # grid_fine = jnp.stack(
+        #     jnp.meshgrid(*[jnp.linspace(-0.85, 0.85, num_grid_pts_fine) for _ in range(ndims)]),
+        #     axis=-1
+        # )
+        
+        grid_fine1 = jnp.linspace(-0.6, 0.6, 73)
+        grid_fine2 = jnp.linspace(-0.85, 0.85, 103)
+        
+        grid_fine = jnp.stack(jnp.meshgrid(grid_fine1, grid_fine2), axis = -1)
     
         # Compute noise covariance matrices for the original dataset fit
         model = model_pred.model
@@ -299,33 +307,33 @@ if not flag_load_other_subjects:
             vars_dict_others = pickled.load(f)
     
         # Reuse cached NBS if available
-        if "NBS_fine_grid" in vars_dict_others.keys():
-            NBS_fine_grid_btst[r] = vars_dict_others["NBS_fine_grid"]
-        else:
-            # Compute covariance matrices on the same fine grid for bootstrap fit r
-            model_pred_btst = deepcopy(vars_dict_others["model_pred_Wishart"])
-            model_btst = model_pred_btst.model
-            W_btst = model_pred_btst.W_est
-            Sigmas_noise_grid_btst = model_btst.compute_Sigmas(
-                model_btst.compute_U(W_btst, grid_fine)
+        # if "NBS_fine_grid" in vars_dict_others.keys():
+        #     NBS_fine_grid_btst[r] = vars_dict_others["NBS_fine_grid"]
+        # else:
+        # Compute covariance matrices on the same fine grid for bootstrap fit r
+        model_pred_btst = deepcopy(vars_dict_others["model_pred_Wishart"])
+        model_btst = model_pred_btst.model
+        W_btst = model_pred_btst.W_est
+        Sigmas_noise_grid_btst = model_btst.compute_Sigmas(
+            model_btst.compute_U(W_btst, grid_fine)
+        )
+
+        # Compute NBS at each grid location
+        for idx in np.ndindex(grid_fine.shape[:-1]):
+            NBS_fine_grid_btst[r, *idx] = \
+                ModelPerformance.compute_normalized_Bures_similarity(
+                Sigmas_noise_grid_org[*idx],
+                Sigmas_noise_grid_btst[*idx],
             )
-    
-            # Compute NBS at each grid location
-            for idx in np.ndindex(grid_fine.shape[:-1]):
-                NBS_fine_grid_btst[r, *idx] = \
-                    ModelPerformance.compute_normalized_Bures_similarity(
-                    Sigmas_noise_grid_org[*idx],
-                    Sigmas_noise_grid_btst[*idx],
-                )
-    
-            # Cache grid, covariance matrices, and NBS back to the bootstrap pickle
-            vars_dict_others["grid_fine"] = grid_fine
-            vars_dict_others["Sigmas_noise_grid_btst"] = Sigmas_noise_grid_btst
-            vars_dict_others["NBS_fine_grid"] = NBS_fine_grid_btst[r]
-            with open(full_path_others[r], 'wb') as f:
-                pickled.dump(vars_dict_others, f)
-    
-            del vars_dict_others
+
+        # Cache grid, covariance matrices, and NBS back to the bootstrap pickle
+        vars_dict_others["grid_fine"] = grid_fine
+        vars_dict_others["Sigmas_noise_grid_btst"] = Sigmas_noise_grid_btst
+        vars_dict_others["NBS_fine_grid"] = NBS_fine_grid_btst[r]
+        with open(full_path_others[r], 'wb') as f:
+            pickled.dump(vars_dict_others, f)
+
+        del vars_dict_others
     
     # ---------------------------------------------------------------------
     # Rank bootstraps by similarity to original fit and keep top 95%
@@ -358,7 +366,7 @@ fitEll_min, fitEll_max = find_inner_outer_contours_for_gridRefs(params_ell_withi
 # -------------------------------------------------------------------------
 # Ground truth is only defined for simulated data (e.g., CIE-based observers).
 # For real experimental data, there is no “true” covariance/threshold field.
-flag_load_gt = True  # toggle: load a ground-truth file for comparison
+flag_load_gt = False  # toggle: load a ground-truth file for comparison
 if flag_load_gt:
     # Select a ground-truth pickle file (typically contains model predictions
     # computed directly from the generative simulation / observer model)
@@ -419,7 +427,7 @@ pltSettings_base = PlotSettingsBase(fig_dir=output_figDir_fits, fontsize = 8)
 pred2D_settings = replace(Plot2DPredSettings(), **pltSettings_base.__dict__)
 pred2D_settings = replace(pred2D_settings, 
                           visualize_samples= False,
-                          visualize_gt = False if flag_load_other_subjects else True,
+                          visualize_gt = False, #if flag_load_other_subjects else True,
                           visualize_model_estimatedCov = False,
                           flag_rescale_axes_label = False,
                           visualize_model_pred = True,
@@ -427,11 +435,11 @@ pred2D_settings = replace(pred2D_settings,
                           ticks = np.linspace(-0.7, 0.7,5),
                           modelpred_lw = 0.75,
                           modelpred_ls = '-',
-                          gt_lw = 0.5,
+                          gt_lw = 0.5, 
                           gt_lc = 'k',
                           gt_label = 'Model predictions (original dataset)' \
                               if not flag_load_gt else 'Ground truths',
-                          gt_ls = '--',  
+                          gt_ls = '-',  
                           title =f'decay rate = {model_pred.model.decay_rate}',
                           fig_name = fig_name) 
 # Initialize Visualization Class for Wishart Predictions
@@ -457,9 +465,9 @@ for idx in np.ndindex(grid.shape[:-1]):
     #ax.scatter(*adapting_bg_2DW[:2], marker = '*', color = adapting_bg_rgb, 
     #           edgecolor = 'k',lw = 0.2, s = 30,
     #           label = 'Adapting background' if idx == (0,0) else None)
-    wishart_pred_vis_wCI.add_CI_ellipses(fitEll_min[*idx], fitEll_max[*idx],
-                                         ax=ax, cm=cm, label=lbl, lw_outer = 0,
-                                         alpha = 0.5)
+    add_CI_ellipses(fitEll_min[*idx], fitEll_max[*idx],
+                    ax=ax, cm=cm, label=lbl, lw_outer = 0,
+                    alpha = 0.5)
 
 # Overlay model predictions (joint fits) onto the same axes
 wishart_pred_vis_wCI.plot_2D(grid, gt_ellipses= reference_ell_vis, 

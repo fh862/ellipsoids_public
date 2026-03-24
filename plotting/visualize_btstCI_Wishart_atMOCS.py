@@ -69,8 +69,8 @@ from core.model_predictions import rerun_model_pred_wExisting_model
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     intervals_overlap, find_btst_dataset_within_CI
 from plotting.wishart_plotting import PlotSettingsBase 
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
-from plotting.wishart_predictions_plotting import Plot2DPredSettings
+from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
+    Plot2DPredSettings, add_CI_ellipses
 from plotting.visualize_MOCS import MOCSTrialsVisualization, PlotPMFSettings,\
     PlotThresCompSettings, PlotCondSettings, MOCSConditionsVisualization
 from plotting.visualize_MOCS import PlotThresCompSettings_bds as plt_st
@@ -442,8 +442,8 @@ if not flag_running_on_hpc:
         cmap_allref.append(cm)
     
         # Plot the CI region between inner and outer ellipse contours
-        wishart_pred_vis_MOCS.add_CI_ellipses(fitEll_min[j], fitEll_max[j],
-                                              ax=ax, cm=cm, label=lbl, alpha = 0.75)
+        add_CI_ellipses(fitEll_min[j], fitEll_max[j],
+                        ax=ax, cm=cm, label=lbl, alpha = 0.75)
     
     # Plot model-predicted threshold ellipses from AEPsych data
     wishart_pred_vis_MOCS.plot_2D(MOCS['xref_unique'][None], ax=ax, settings=pred2D_settings)

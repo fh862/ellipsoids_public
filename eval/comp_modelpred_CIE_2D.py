@@ -54,9 +54,9 @@ os.chdir(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
+from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
+    Plot2DPredSettings, add_CI_ellipses
 from plotting.wishart_plotting import PlotSettingsBase 
-from plotting.wishart_predictions_plotting import Plot2DPredSettings
 
 #specify the file name
 base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
@@ -204,13 +204,9 @@ for idx in np.ndindex(grid.shape[:-1]):
     ax.plot(*CIE_pred_W_unit[*idx], color = 'k', alpha = 0.7,lw= 1, ls = '-', label = lbl1)
     
     #model fits to the bootstrapped datasets
-    wishart_pred_vis_set1.add_CI_ellipses(ell_min[*idx], 
-                                          ell_max[*idx], 
-                                          ax, 
-                                          cm =color_thres_data.W2D_to_rgb(grid[*idx]),
-                                          alpha = 0.5,
-                                          label = lbl2
-                                          )
+    add_CI_ellipses(ell_min[*idx], ell_max[*idx], ax, 
+                    cm =color_thres_data.W2D_to_rgb(grid[*idx]),
+                    alpha = 0.5, label = lbl2)
 
 # Manually add the legend
 ax.legend(loc='lower center',bbox_to_anchor=(0.5, -0.45), fontsize = pred2D_settings.fontsize-1)
@@ -272,13 +268,10 @@ for idx in np.ndindex(grid.shape[:-1]):
     ax2.plot(*CIE_pred_lab[*idx,1:], ls= '-', color = 'k', alpha = 0.7, lw = 1, label = lbl1)
     
     # WPPM prediction CI
-    wishart_pred_vis_set1.add_CI_ellipses(ell_min_lab[*idx,1:], 
-                                          ell_max_lab[*idx,1:], 
-                                          ax2, 
-                                          cm =color_thres_data.W2D_to_rgb(grid[*idx]),
-                                          alpha = 0.5,
-                                          label = lbl2
-                                          )
+    add_CI_ellipses(ell_min_lab[*idx,1:], ell_max_lab[*idx,1:], ax2, 
+                    cm =color_thres_data.W2D_to_rgb(grid[*idx]),
+                    alpha = 0.5, label = lbl2)
+    
 ax2.set_xlabel(r'CIE $a^*$')
 ax2.set_ylabel(r'CIE $b^*$')
 ax2.set_aspect('equal', adjustable='box')

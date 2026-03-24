@@ -134,6 +134,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 from plotting.wishart_predictions_plotting import (
     Plot2DPredSettings,
     WishartPredictionsVisualization,
+    add_CI_ellipses,
 )
 
 # %%
@@ -660,7 +661,7 @@ if not flag_running_on_hpc:
                     if (i == 0 and j == 0)
                     else None
                 )
-                wishart_pred_vis_wCI.add_CI_ellipses(
+                add_CI_ellipses(
                     fitEll_min[i, j],
                     fitEll_max[i, j],
                     ax=ax_d,

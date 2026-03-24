@@ -61,6 +61,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 from plotting.wishart_predictions_plotting import (
     Plot2DPredSettings,
     WishartPredictionsVisualization,
+    add_CI_ellipses,
 )
 
 # specify the file name
@@ -209,7 +210,7 @@ for idx in np.ndindex(grid.shape[:-1]):
     ax.plot(*CIE_pred_W_unit[*idx], color="k", alpha=0.7, lw=1, ls="-", label=lbl1)
 
     # model fits to the bootstrapped datasets
-    wishart_pred_vis_set1.add_CI_ellipses(
+    add_CI_ellipses(
         ell_min[*idx],
         ell_max[*idx],
         ax,
@@ -288,7 +289,7 @@ for idx in np.ndindex(grid.shape[:-1]):
     ax2.plot(*CIE_pred_lab[*idx, 1:], ls="-", color="k", alpha=0.7, lw=1, label=lbl1)
 
     # WPPM prediction CI
-    wishart_pred_vis_set1.add_CI_ellipses(
+    add_CI_ellipses(
         ell_min_lab[*idx, 1:],
         ell_max_lab[*idx, 1:],
         ax2,

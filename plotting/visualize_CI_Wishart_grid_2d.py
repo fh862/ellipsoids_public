@@ -56,6 +56,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 from plotting.wishart_predictions_plotting import (
     Plot2DPredSettings,
     WishartPredictionsVisualization,
+    add_CI_ellipses,
 )
 
 # %%
@@ -73,6 +74,10 @@ from plotting.wishart_predictions_plotting import (
 # or data from the adaptation experiment with different adapting backgrounds
 # 'ELPS_analysis/Experiment_DataFiles/4D_Expt_varyingBackground/sub12/fits'
 # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub12_decayRate0.5_nBasisDeg5_blue.pkl' or gray
+
+# dichromats
+# 'ELPS_analysis/Experiment_DataFiles/4D_Expt_dichromats/sub15/fits'
+# 'Fitted_ColorDiscrimination_4dExpt_LSisolating plane_sub15_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
 input_fileDir_fits, file_name = select_file_and_get_path()
 
 # Construct the full path to the selected file
@@ -110,7 +115,7 @@ Assumptions:
 
 """
 
-num_grid_pts_desired = 7
+num_grid_pts_desired = 5
 flag_append_data = False
 
 # Construct the key name based on the desired grid size
@@ -188,8 +193,8 @@ else:
 #   - NBS_grid[i, j, r] stores the normalized Bures similarity between:
 #       Sigma_noise(original)[i, j]  vs  Sigma_noise(dataset r)[i, j]
 #     (NBS≈1 means nearly identical covariance shape/scale)
-grid_shape = [num_grid_pts_desired] * ndims
-params_ell_shape = grid_shape + [nDatasets, 5]
+grid_shape = grid.shape[:-1]
+params_ell_shape = grid_shape + (nDatasets, 5)
 params_ell = np.full(params_ell_shape, np.nan)
 
 full_path_others = []
@@ -357,7 +362,7 @@ fitEll_min, fitEll_max = find_inner_outer_contours_for_gridRefs(params_ell_withi
 # -------------------------------------------------------------------------
 # Ground truth is only defined for simulated data (e.g., CIE-based observers).
 # For real experimental data, there is no “true” covariance/threshold field.
-flag_load_gt = True  # toggle: load a ground-truth file for comparison
+flag_load_gt = False  # toggle: load a ground-truth file for comparison
 if flag_load_gt:
     # Select a ground-truth pickle file (typically contains model predictions
     # computed directly from the generative simulation / observer model)
@@ -461,7 +466,7 @@ for idx in np.ndindex(grid.shape[:-1]):
     # ax.scatter(*adapting_bg_2DW[:2], marker = '*', color = adapting_bg_rgb,
     #           edgecolor = 'k',lw = 0.2, s = 30,
     #           label = 'Adapting background' if idx == (0,0) else None)
-    wishart_pred_vis_wCI.add_CI_ellipses(
+    add_CI_ellipses(
         fitEll_min[*idx],
         fitEll_max[*idx],
         ax=ax,

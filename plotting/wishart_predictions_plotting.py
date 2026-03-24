@@ -582,47 +582,6 @@ class WishartPredictionsVisualization(PlottingTools):
                 ax = [ax]
         return ax, fig
 
-    @staticmethod
-    def add_CI_ellipses(ell_min, ell_max, ax=None, cm="k", alpha=0.9, label=None, lw_outer=0, lw_inner=0):
-        """
-        Plots the confidence interval (CI) region of an ellipse on the given axis.
-
-        The CI region is defined by:
-        - ell_max: the outer contour (union of all bootstrapped ellipses)
-        - ell_min: the inner contour (intersection of all bootstrapped ellipses)
-
-        This method fills the area between the outer and inner contours, visually
-        representing uncertainty in the fitted ellipse.
-
-        Args:
-            ell_min (ndarray): Inner contour of the CI (2 x N array of x and y coordinates).
-            ell_max (ndarray): Outer contour of the CI (2 x N array of x and y coordinates).
-            ax (matplotlib.axes.Axes, optional): Axis to plot on. If None, assumes one is already in use.
-            cm (str or color, optional): Color for the CI fill (default: 'k' for black).
-            lbl (str, optional): Label for the outer region (useful for legend).
-        """
-        # Identify valid (non-NaN) points in the outer contour
-        idx_max_nonan = ~np.isnan(ell_max[0])
-        # Fill the outer contour region with solid color to indicate the CI boundary
-        ax.fill(
-            ell_max[0, idx_max_nonan],
-            ell_max[1, idx_max_nonan],
-            color=cm,
-            alpha=alpha,
-            lw=lw_outer,
-            label=label,
-        )
-
-        # Identify valid (non-NaN) points in the inner contour
-        idx_min_nonan = ~np.isnan(ell_min[0])
-        # Fill the inner contour with white to "punch out" the inside, leaving a ring
-        ax.fill(
-            ell_min[0, idx_min_nonan],
-            ell_min[1, idx_min_nonan],
-            color="white",
-            lw=lw_inner,
-        )
-
     # %%
     def plot_2D(self, grid_est, settings: Plot2DPredSettings, gt_ellipses=None, ax=None):
         """
@@ -1257,6 +1216,47 @@ class WishartPredictionsVisualization(PlottingTools):
 
 
 # %%
+def add_CI_ellipses(ell_min, ell_max, ax=None, cm="k", alpha=0.9, label=None, lw_outer=0, lw_inner=0):
+    """
+    Plots the confidence interval (CI) region of an ellipse on the given axis.
+
+    The CI region is defined by:
+    - ell_max: the outer contour (union of all bootstrapped ellipses)
+    - ell_min: the inner contour (intersection of all bootstrapped ellipses)
+
+    This method fills the area between the outer and inner contours, visually
+    representing uncertainty in the fitted ellipse.
+
+    Args:
+        ell_min (ndarray): Inner contour of the CI (2 x N array of x and y coordinates).
+        ell_max (ndarray): Outer contour of the CI (2 x N array of x and y coordinates).
+        ax (matplotlib.axes.Axes, optional): Axis to plot on. If None, assumes one is already in use.
+        cm (str or color, optional): Color for the CI fill (default: 'k' for black).
+        lbl (str, optional): Label for the outer region (useful for legend).
+    """
+    # Identify valid (non-NaN) points in the outer contour
+    idx_max_nonan = ~np.isnan(ell_max[0])
+    # Fill the outer contour region with solid color to indicate the CI boundary
+    ax.fill(
+        ell_max[0, idx_max_nonan],
+        ell_max[1, idx_max_nonan],
+        color=cm,
+        alpha=alpha,
+        lw=lw_outer,
+        label=label,
+    )
+
+    # Identify valid (non-NaN) points in the inner contour
+    idx_min_nonan = ~np.isnan(ell_min[0])
+    # Fill the inner contour with white to "punch out" the inside, leaving a ring
+    ax.fill(
+        ell_min[0, idx_min_nonan],
+        ell_min[1, idx_min_nonan],
+        color="white",
+        lw=lw_inner,
+    )
+
+
 def sort_plane_corners_ccw(corners_3x4):
     """
     Order 4 coplanar corners counter-clockwise in their plane.

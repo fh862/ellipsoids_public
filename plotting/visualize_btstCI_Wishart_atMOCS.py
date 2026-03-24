@@ -85,6 +85,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 from plotting.wishart_predictions_plotting import (
     Plot2DPredSettings,
     WishartPredictionsVisualization,
+    add_CI_ellipses,
 )
 
 # %%
@@ -480,7 +481,7 @@ if not flag_running_on_hpc:
         cmap_allref.append(cm)
 
         # Plot the CI region between inner and outer ellipse contours
-        wishart_pred_vis_MOCS.add_CI_ellipses(fitEll_min[j], fitEll_max[j], ax=ax, cm=cm, label=lbl, alpha=0.75)
+        add_CI_ellipses(fitEll_min[j], fitEll_max[j], ax=ax, cm=cm, label=lbl, alpha=0.75)
 
     # Plot model-predicted threshold ellipses from AEPsych data
     wishart_pred_vis_MOCS.plot_2D(MOCS["xref_unique"][None], ax=ax, settings=pred2D_settings)

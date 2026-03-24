@@ -72,7 +72,7 @@ from plotting.color_spaces_plotting import (
     PlotGegenfurtner,
 )
 from plotting.wishart_plotting import PlotSettingsBase
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
+from plotting.wishart_predictions_plotting import add_CI_ellipses
 
 # Base directory where data lives. On HPC, prefer paths relative to the script.
 base_dir = (
@@ -481,7 +481,7 @@ if not flag_running_on_hpc:
             cm_n = "gray"
         else:
             cm_n = color_thres_data.W2D_to_rgb(ref_pts_W_org[0, n - 1])
-        WishartPredictionsVisualization.add_CI_ellipses(ell_min_W[n], ell_max_W[n], cm=cm_n, alpha=0.4, ax=ax1)
+        add_CI_ellipses(ell_min_W[n], ell_max_W[n], cm=cm_n, alpha=0.4, ax=ax1)
 
     _, _, box_ub = Gegenfurtner_vis.plot_Gegenfurtner_Wishart_space(plt_st, ax=ax1)
     fig1.savefig(
@@ -497,7 +497,7 @@ if not flag_running_on_hpc:
             cm_n = "gray"
         else:
             cm_n = color_thres_data.W2D_to_rgb(ref_pts_W_org[0, n - 1])
-        WishartPredictionsVisualization.add_CI_ellipses(ell_min_sDKL[n], ell_max_sDKL[n], cm=cm_n, alpha=0.4, ax=ax2)
+        add_CI_ellipses(ell_min_sDKL[n], ell_max_sDKL[n], cm=cm_n, alpha=0.4, ax=ax2)
     Gegenfurtner_vis.plot_sDKL_space(plt_st, ax=ax2)
     fig2.savefig(
         os.path.join(output_figDir_fits, f"Comp_GegenfurtnerEllipses_sub{subN}_sDKL.pdf"),

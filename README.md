@@ -23,27 +23,38 @@ source .venv/bin/activate      # macOS / Linux
 # .venv\Scripts\activate       # Windows
 ```
 
-### 3. Install JAX
-
-JAX installation depends on your hardware. Choose **one**:
-
-```bash
-# CPU only
-pip install jax jaxlib
-
-# NVIDIA GPU (CUDA 12)
-pip install "jax[cuda12]"
-```
-
-See the [JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html) for other platforms.
-
-### 4. Install this package and remaining dependencies
+### 3. Install the package and all dependencies
 
 ```bash
 pip install -e ellipsoids/
 ```
 
+JAX (CPU build) is pulled in automatically.  For GPU acceleration see below.
+
 This installs the package in editable mode so that `from core import ...`, `from analysis import ...`, etc. work from any script or notebook without manually adjusting `sys.path`.
+
+### GPU acceleration (optional)
+
+**NVIDIA GPU (CUDA 12):**
+```bash
+pip install "jax[cuda12]"
+```
+Run this after `pip install -e ellipsoids/` to replace the CPU JAX build.
+
+**Apple Silicon (M1/M2/M3/M4):** GPU acceleration is not available for this
+codebase.  The code requires 64-bit floating point
+(`jax_enable_x64 = True`), which the Apple Metal JAX plugin (`jax-metal`)
+does not support.  CPU-only performance on Apple Silicon is still very good.
+
+### Future sessions
+
+Each time you open a new terminal, activate the environment before running code:
+
+```bash
+cd ellipsoids_eLife2025
+source .venv/bin/activate      # macOS / Linux
+# .venv\Scripts\activate       # Windows
+```
 
 ---
 
@@ -57,6 +68,15 @@ python ellipsoids/scripts/download_osf_data.py
 ```
 
 Pass `--data-dir /your/preferred/path` to save elsewhere. The script uses only Python stdlib (no extra packages needed).
+
+---
+
+## Running tests
+
+```bash
+cd ellipsoids
+python -m pytest --tb=short -v
+```
 
 ---
 
@@ -90,6 +110,8 @@ from analysis.color_thres import color_thresholds
 | `fit_4d_human.py` | Main fitting script (4-D stimulus space) |
 | `fit_6d_human.py` | Main fitting script (6-D stimulus space) |
 | `fit_MOCS.py` | Fitting script for MOCS paradigm |
+
+*(All paths above are relative to the `ellipsoids/` subdirectory.)*
 
 ---
 

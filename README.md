@@ -40,7 +40,7 @@ See the [JAX installation guide](https://jax.readthedocs.io/en/latest/installati
 ### 4. Install this package and remaining dependencies
 
 ```bash
-pip install -e .
+pip install -e ellipsoids/
 ```
 
 This installs the package in editable mode so that `from core import ...`, `from analysis import ...`, etc. work from any script or notebook without manually adjusting `sys.path`.
@@ -53,7 +53,7 @@ The experimental data are hosted on OSF at <https://osf.io/k27js>.
 Download everything into `data/` with:
 
 ```bash
-python scripts/download_osf_data.py
+python ellipsoids/scripts/download_osf_data.py
 ```
 
 Pass `--data-dir /your/preferred/path` to save elsewhere. The script uses only Python stdlib (no extra packages needed).
@@ -62,7 +62,7 @@ Pass `--data-dir /your/preferred/path` to save elsewhere. The script uses only P
 
 ## Using this code from another project
 
-After installing with `pip install -e /path/to/ellipsoids_eLife2025`, the packages (`core`, `analysis`, `plotting`, …) are available in that environment:
+After installing with `pip install -e /path/to/ellipsoids_eLife2025/ellipsoids`, the packages (`core`, `analysis`, `plotting`, …) are available in that environment:
 
 ```python
 from core.wishart_process import WishartProcessModel
@@ -84,6 +84,8 @@ from analysis.color_thres import color_thresholds
 | `sim/` | Simulation scripts |
 | `model_demo/` | Stand-alone model demonstrations |
 | `scripts/` | Utility scripts (e.g. data download) |
+| `dconfig/` | Experiment configuration files |
+| `tests/` | Automated test suite |
 | `data/` | Downloaded dataset — **not tracked by git** |
 | `fit_4d_human.py` | Main fitting script (4-D stimulus space) |
 | `fit_6d_human.py` | Main fitting script (6-D stimulus space) |

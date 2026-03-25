@@ -20,6 +20,7 @@ dependencies = [
     "colour-science",
     "scikit-image",
     "shapely",
+    "tqdm",
 ]
 
 [project.optional-dependencies]

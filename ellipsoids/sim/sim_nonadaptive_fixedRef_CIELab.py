@@ -49,14 +49,12 @@ Debugging tip
 
 """
 
-import sys
 import os
 import numpy as np
 import pickle
 import dill as pickled
 import matplotlib.pyplot as plt
 from dataclasses import replace
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.ellipses_tools import PointsOnEllipseQ, UnitCircleGenerate
 from analysis.simulations_CIELab import SimThresCIELab
 from analysis.trial_placement import StimConfig_RGBslices, StimConfig_isoluminant,\

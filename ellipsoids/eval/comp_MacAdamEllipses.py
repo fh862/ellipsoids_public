@@ -44,12 +44,7 @@ import re
 import colour
 from colour.plotting import plot_chromaticity_diagram_CIE1931
 from colour.models import XYZ_to_xyY
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.ellipses_tools import rotAngle_to_eigenvectors
 from core.model_predictions import rerun_model_pred_wExisting_model
 from analysis.utils_load import load_util_files

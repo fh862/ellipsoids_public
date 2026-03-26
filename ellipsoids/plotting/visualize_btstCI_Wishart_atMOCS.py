@@ -58,12 +58,7 @@ from copy import deepcopy
 from tqdm import trange
 from dataclasses import replace
 import re
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.MOCS_thresholds import compute_Wishart_based_pCorrect_atMOCS
 from core.model_predictions import rerun_model_pred_wExisting_model
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \

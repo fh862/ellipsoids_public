@@ -45,14 +45,12 @@ Sobol trials, with trials organized by type.
 from copy import deepcopy
 import re
 import dill as pickled
-import sys
 import os
 import numpy as np
 import pandas as pd
 from tqdm import trange
 from dataclasses import replace
 import matplotlib.pyplot as plt
-sys.path.append('/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids')
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.data_validation import DataExport
 from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization, \

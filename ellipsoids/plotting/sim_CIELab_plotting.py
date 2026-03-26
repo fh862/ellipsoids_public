@@ -11,12 +11,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Union, ClassVar, Sequence
 from datetime import datetime
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 
 #%%

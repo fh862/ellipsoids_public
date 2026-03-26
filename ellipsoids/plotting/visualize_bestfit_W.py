@@ -24,13 +24,7 @@ import numpy as np
 import dill as pickled
 from dataclasses import replace
 import matplotlib.pyplot as plt
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
 from plotting.wishart_plotting import (
     WishartModelBasicsVisualization,
     PlotSettingsBase,

@@ -22,12 +22,7 @@ specified cutoff (default: 0.9), we may consider excluding that subject.
 import jax
 jax.config.update("jax_enable_x64", True)
 import numpy as np
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import load_expt_data, select_file_and_get_path, extract_sub_number
 
 # ---------------------------------------------------------------------------

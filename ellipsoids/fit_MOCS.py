@@ -44,14 +44,12 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import os
 import dill as pickled
-import sys
 import numpy as np
 import re
 from tqdm import tqdm
 from dataclasses import replace
 from tqdm import trange
 from copy import deepcopy
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from core.model_predictions import rerun_model_pred_wExisting_model
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.MOCS_thresholds import fit_PMF_MOCS_trials, sim_MOCS_trials

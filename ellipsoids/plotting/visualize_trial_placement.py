@@ -20,12 +20,7 @@ import re
 import numpy as np
 np.random.seed(None)
 
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization, Plot2DSamplingSettings
 from plotting.wishart_plotting import PlotSettingsBase 
 from analysis.utils_load import select_file_and_get_path, extract_sub_number

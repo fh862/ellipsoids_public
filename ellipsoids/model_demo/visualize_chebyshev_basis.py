@@ -37,10 +37,8 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 import os
 from dataclasses import replace
-sys.path.append('/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids')
 from core import chebyshev
 from core.wishart_process import WishartProcessModel
 from plotting.wishart_plotting import WishartModelBasicsVisualization, PlotSettingsBase,\

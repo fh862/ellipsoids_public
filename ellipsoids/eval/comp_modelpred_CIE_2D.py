@@ -47,10 +47,6 @@ from dataclasses import replace
 from copy import deepcopy
 from tqdm import trange
 import os
-
-script_dir = os.getcwd()
-parent_dir = os.path.dirname(script_dir)
-os.chdir(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI

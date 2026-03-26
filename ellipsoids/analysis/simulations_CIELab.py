@@ -18,10 +18,6 @@ from enum import IntEnum
 from typing import Tuple, Sequence, Dict, List
 from colormath.color_objects import LabColor
 from colormath.color_diff import delta_e_cie2000, delta_e_cie1994, delta_e_cie1976
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.ellipses_tools import UnitCircleGenerate
 #in order for delta_e_cie2000 to work, we need to do the following adjustment
 def patch_asscalar(a):

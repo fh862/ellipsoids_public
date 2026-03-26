@@ -46,13 +46,11 @@ and rendered ellipse curves for visualization and further analysis.
 
 """
 
-import sys
 import numpy as np
 from dataclasses import replace
 import dill as pickled
 import os
 from tqdm import tqdm
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate
 from analysis.simulations_CIELab import SimThresCIELab, strip_trailing_zeros
 from plotting.sim_CIELab_plotting import CIELabVisualization, Plot2DSinglePlaneSettings

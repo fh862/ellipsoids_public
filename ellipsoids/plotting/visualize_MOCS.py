@@ -11,11 +11,6 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Union
 import os
-import sys
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 
 #%%

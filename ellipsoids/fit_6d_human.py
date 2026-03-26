@@ -45,12 +45,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import numpy as np
 import copy
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from core import optim, oddity_task
 from core.wishart_process import WishartProcessModel
 from core.model_predictions import wishart_model_pred

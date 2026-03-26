@@ -595,3 +595,40 @@ def angles_to_3Dchromatic_directions(theta_deg, phi_deg, normalize=True):
 
     return chromatic_directions
 
+def fibonacci_sphere(n):
+    """Generate approximately uniform unit vectors on the sphere.
+
+    Uses a Fibonacci spiral / golden-angle construction to place `n` points
+    evenly over the surface of the unit sphere.
+
+    Parameters
+    ----------
+    n : int
+        Number of directions to generate.
+
+    Returns
+    -------
+    np.ndarray, shape (n, 3)
+        Unit vectors `[x, y, z]` distributed approximately uniformly on the sphere.
+    """
+    i = np.arange(n)
+
+    # Golden angle in radians; spacing successive azimuths by this value
+    # avoids clustering and gives an even covering of the sphere.
+    phi = np.pi * (3.0 - np.sqrt(5.0))
+
+    # Evenly space points in z so the samples cover the sphere from north
+    # pole to south pole without placing points exactly on the poles.
+    z = 1 - 2 * (i + 0.5) / n
+
+    # Convert each z-value to the corresponding radius in the x-y plane.
+    r = np.sqrt(1 - z**2)
+
+    # Azimuthal angle for each sample along the Fibonacci spiral.
+    theta = phi * i
+
+    # Convert cylindrical coordinates to Cartesian coordinates.
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+
+    return np.column_stack([x, y, z])

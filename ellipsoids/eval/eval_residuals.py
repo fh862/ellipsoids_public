@@ -30,12 +30,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 #from scipy.stats import linregress
 import statsmodels.api as sm
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from analysis.ellipses_tools import symmetric_angle_difference
 

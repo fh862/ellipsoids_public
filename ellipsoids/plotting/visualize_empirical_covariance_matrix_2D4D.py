@@ -41,14 +41,12 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
-import sys
 import os
 import dill as pickled
 from dataclasses import replace
 import matplotlib.pyplot as plt
 
 #load functions from other modules
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from core.model_predictions import rerun_model_pred_wExisting_model
 from plotting.wishart_plotting import WishartModelBasicsVisualization,\
     PlotSettingsBase, PlotCovMatSettings, PlotUSettings

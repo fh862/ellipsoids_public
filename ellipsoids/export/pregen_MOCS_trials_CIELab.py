@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import dill as pickled
 import pandas as pd
 from copy import deepcopy
-import sys
 import os
 import numpy as np
 import jax
@@ -18,7 +17,6 @@ jax.config.update("jax_enable_x64", True)
 from dataclasses import replace
 
 #load functions from other modules
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.color_thres import color_thresholds
 from analysis.data_validation import shuffle_trials_within_levels
 from analysis.MOCS_thresholds import sim_MOCS_trials

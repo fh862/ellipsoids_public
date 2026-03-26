@@ -13,12 +13,7 @@ import numpy as np
 import re
 import matplotlib.pyplot as plt
 from dataclasses import replace
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
 from plotting.wishart_plotting import PlotSettingsBase 

@@ -10,12 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Literal, Union
 from copy import deepcopy
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.MOCS_thresholds import sim_MOCS_trials
 from analysis.ellipses_tools import stretch_unit_circle, rotate_relocate_stretched_ellipse,\
     covMat_to_ellParamsQ, distance_to_ellipse_boundary, compute_radii_scaler_to_reach_targetPC

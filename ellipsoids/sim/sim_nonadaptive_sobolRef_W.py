@@ -49,13 +49,11 @@ a Bernoulli response (1 = correct, 0 = incorrect).
 
 """
 
-import sys
 import numpy as np
 import dill as pickled
 import os
 from dataclasses import replace
 import matplotlib.pyplot as plt
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.trial_placement import TrialPlacement_sobolRef_W, StimConfig_W_sobolref
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from plotting.wishart_plotting import PlotSettingsBase

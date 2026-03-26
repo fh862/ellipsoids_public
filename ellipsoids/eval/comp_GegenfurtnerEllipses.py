@@ -48,13 +48,8 @@ import dill as pickled
 import numpy as np
 import re
 from dataclasses import replace
-import sys
 import os
 import matplotlib.pyplot as plt
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.ellipses_tools import UnitCircleGenerate,convert_2Dcov_to_points_on_ellipse,\
     covMat_to_ellParamsQ, GegenfurtnerEll
 from analysis.utils_load import select_file_and_get_path, extract_sub_number

@@ -28,14 +28,9 @@ be used for running the JAX-based analysis code.
 import importlib.metadata
 import matplotlib.pyplot as plt
 import dill as pickled
-import sys
 import os
 import numpy as np
 from dataclasses import replace
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.color_thres import color_thresholds
 from analysis.config_generator import ConfigGenerator
 from analysis.sim_trials import SimulateTrialGivenWishart

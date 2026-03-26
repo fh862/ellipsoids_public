@@ -37,12 +37,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import load_expt_data
 from analysis.bin_pCorrect import BinnedPC
 

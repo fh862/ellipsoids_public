@@ -17,18 +17,12 @@ The logic:
 
 """
 
-import sys
 import os
 from scipy.io import loadmat
 import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import replace
 import dill as pickled
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.simulations_CIELab import SimThresCIELab
 from analysis.color_thres import color_thresholds
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate

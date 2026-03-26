@@ -10,12 +10,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import numpy as np
 from shapely.geometry import Polygon
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.ellipses_tools import find_inner_outer_contours, distance_to_ellipse_boundary
 
 #%%

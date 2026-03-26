@@ -10,10 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import List, Tuple, Union
-import sys
 import os
 from datetime import datetime
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 
 #%%

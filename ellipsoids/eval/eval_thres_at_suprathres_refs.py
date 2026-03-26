@@ -43,12 +43,7 @@ from matplotlib.patches import Patch
 from copy import deepcopy
 from dataclasses import replace
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from analysis.ellipsoids_tools import slice_ellipsoid_byPlane
 from plotting.wishart_plotting import PlotSettingsBase 

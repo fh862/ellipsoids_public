@@ -13,12 +13,7 @@ import jax.numpy as jnp
 import io
 import configparser
 import warnings
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from core import oddity_task
 
 #%%

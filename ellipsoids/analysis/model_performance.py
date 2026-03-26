@@ -11,12 +11,7 @@ jax.config.update("jax_enable_x64", True)
 from scipy.linalg import sqrtm
 import numpy as np
 from scipy.stats import special_ortho_group
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.ellipses_tools import ellParams_to_covMat, rotAngle_to_eigenvectors, ellParamsQ_to_covMat 
 
 #%%

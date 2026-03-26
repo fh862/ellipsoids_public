@@ -37,13 +37,11 @@ General procedure
 
 """
 
-import sys
 import os
 import numpy as np
 import dill as pickled
 from tqdm import tqdm
 from dataclasses import replace
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.ellipses_tools import ellParams_to_covMat
 from analysis.ellipsoids_tools import UnitCircleGenerate_3D, fit_3d_isothreshold_ellipsoid
 from analysis.simulations_CIELab import SimThresCIELab

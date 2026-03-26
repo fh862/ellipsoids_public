@@ -13,12 +13,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple
 from datetime import datetime
 import plotly.graph_objects as go
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.color_thres import color_thresholds
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 from plotting.wishart_predictions_plotting import Plot3DPredHTMLSettings,\

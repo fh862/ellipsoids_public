@@ -15,12 +15,7 @@ import matplotlib as mpl
 import numpy as np
 import imageio.v2 as imageio
 from numpy.polynomial.chebyshev import chebval2d
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.color_thres import color_thresholds
 from core import viz
 

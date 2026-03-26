@@ -16,7 +16,7 @@ import glob
 from scipy.io import loadmat
 import pandas as pd
 from colour.models import XYZ_to_xyY
-from analysis.ellipses_tools import PointsOnEllipseQ
+from .ellipses_tools import PointsOnEllipseQ
 
 #%%
 def find_files_with_prefix(path, prefix, file_type="csv"):

@@ -40,12 +40,7 @@ import dill as pickled
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.color_thres import color_thresholds
 from analysis.MOCS_thresholds import sim_MOCS_trials
 from dconfig.config_pregenSobol import PregenSobolConfig

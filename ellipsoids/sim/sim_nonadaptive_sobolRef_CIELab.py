@@ -46,13 +46,11 @@ lie very close to the ground-truth threshold contour.
 
 """
 
-import sys
 import os
 import numpy as np
 import dill as pickled
 import matplotlib.pyplot as plt
 from dataclasses import replace
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.simulations_CIELab import SimThresCIELab
 from analysis.trial_placement import StimConfig_RGBslices_sobolref, \
     StimConfig_isoluminant_sobolref, TrialPlacement_sobolRef

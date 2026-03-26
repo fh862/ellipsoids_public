@@ -10,12 +10,7 @@ import numpy as np
 import time  
 import threading
 import dill as pickled
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.sim_trials import SimulateTrialGivenWishart
 
 #%%

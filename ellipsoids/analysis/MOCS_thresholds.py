@@ -38,12 +38,7 @@ from scipy.optimize import minimize
 from scipy.stats.qmc import Sobol
 from tqdm import trange
 import copy
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 # Optional import: geodesics (not needed on all machines)
 try:
     from core import geodesics

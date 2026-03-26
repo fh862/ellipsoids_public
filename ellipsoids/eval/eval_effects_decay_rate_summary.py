@@ -24,22 +24,13 @@ import dill as pickled
 import re
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 import os
 import matplotlib as mpl
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 
 #%% 
 # -------------------------------------------------------------------------
 # Set up paths so we can import from the parent directory if needed
 # -------------------------------------------------------------------------
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 
 # Base directory where all result files are stored
 base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'

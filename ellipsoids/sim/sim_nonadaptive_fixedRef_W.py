@@ -31,14 +31,12 @@ sample reference locations using Sobol sequences, see
 
 """
 
-import sys
 import numpy as np
 import dill as pickled
 import os
 from dataclasses import replace
 import matplotlib.pyplot as plt
 #import functions from the other script
-sys.path.append("/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids")
 from analysis.trial_placement import TrialPlacement_gridRef_W, StimConfig_W
 from analysis.ellipses_tools import UnitCircleGenerate, PointsOnEllipseQ
 from analysis.utils_load import select_file_and_get_path, extract_sub_number

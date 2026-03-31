@@ -13,7 +13,6 @@ import jax.numpy as jnp
 import io
 import configparser
 import warnings
-import os
 from core import oddity_task
 
 #%%
@@ -27,7 +26,7 @@ class SimulateTrialGivenWishart:
         
         The initialization also sets up necessary parameters based on the dimensionality of the
         experiment, which dictates the experimental setup and the data required.
-    
+        
         Args:
             expt_dim (int): Number of dimensions in the color discrimination experiment. Valid options are:
                             - 2D: Manipulates two dimensions of color.
@@ -39,14 +38,14 @@ class SimulateTrialGivenWishart:
             ref (list, optional): Reference stimuli configurations, required for 2D and 3D experiments.
             pseudo_randomize (bool): If True, configures trials in a pseudo-random order.
             val_scaler (list, optional): Scaling factors to adjust trial values dynamically.
-    
+        
         Raises:
             ValueError: If the experiment dimension is not one of [2, 3, 4, 6], or if reference data is
                         required but not provided, or if the number of scaling factors does not match
                         the expected number based on the trial setup.
         """
-
-        if expt_dim not in (2,3,4,6):
+        
+        if expt_dim not in (2,3,4,5,6):
             raise ValueError("Color discrimination experiment must be either 2, 3, 4 or 6d.")
         self.expt_dim   = expt_dim
         self.gt_Wishart = gt_Wishart
@@ -61,7 +60,7 @@ class SimulateTrialGivenWishart:
         # Retrieve parameter names, strategy names, and trial numbers
         self.parnames       = self._extract_field_vals('common','parnames', strsplit = True)
         self.strat_names    = self._extract_field_vals('common','strategy_names', strsplit = True)
-
+        
         # Read per-strategy trial quotas from the config.
         # Exactly ONE of these fields is used in a given config:
         #   - "min_asks" (standard workflow)
@@ -91,10 +90,10 @@ class SimulateTrialGivenWishart:
         self.pseudo_randomize = pseudo_randomize
         self.pseudo_randomize_seed = pseudo_randomize_seed
         self.pseudo_order = self._create_pseudorandom_order()
-
+        
         # Initialize lists to store trial data
         self._init_trial_lists()
-
+        
         # Validate and assign scaling factors, defaulting to 1 if not provided
         if customized_val_scaler is not None: #customized (shuffled) sobol scalers are prioritized
             self.customized_val_scaler = customized_val_scaler
@@ -103,7 +102,7 @@ class SimulateTrialGivenWishart:
             self.customized_val_scaler = None
             self._validate_val_scaler(val_scaler)
             self.val_scaler = val_scaler
-
+    
     def _extract_field_vals(self, section, field, strsplit = False):
         """
         Extracts and optionally splits values from config strings using a ConfigParser.
@@ -116,7 +115,7 @@ class SimulateTrialGivenWishart:
         Returns:
             Extracted value, optionally as a list.
         """
-
+    
         # Create a new ConfigParser object
         config_parser = configparser.ConfigParser()
         # Read the configuration from the string
@@ -134,7 +133,7 @@ class SimulateTrialGivenWishart:
             return result_list
         else:
             return result_string
-
+    
     def _create_pseudorandom_order(self):
         """
         Generate a 2D array specifying the order of trial configurations for each trial set.
@@ -227,53 +226,96 @@ class SimulateTrialGivenWishart:
             trial_counter (int): The current trial number, determining if a new configuration or a resume is needed.
             config_index (int): Index to select the specific trial configuration from `self.config_all`.
         """
-
+    
         if trial_counter == 0:
             client.configure(config_str=self.config_all[config_index],\
                 config_name=f"{self.expt_dim}d_colorDiscrimination_idx{config_index}")
         else:
             client.resume(config_name=f"{self.expt_dim}d_colorDiscrimination_idx{config_index}")
-
+    
     def _derive_xref_x1(self, trial_counter, trial_val, config_index = None):
         """
-        Derives normalized reference and comparison stimulus dimensions based on the 
-        experiment dimensionality.
+        Convert a trial returned by AEPsych into reference and comparison stimuli
+        in the normalized W coordinate system.
+
+        The meaning of `trial_val` depends on `self.expt_dim`:
+
+        - 2D/3D interleaved experiments:
+          `trial_val` contains only the comparison offset relative to a fixed
+          reference selected by `config_index`. The reference is looked up from
+          `self.ref[config_index]`, the comparison offset is optionally scaled,
+          and the comparison stimulus is formed as `xref + delta`.
+
+        - 4D/6D full-field experiments:
+          `trial_val` contains both the reference coordinates and the comparison
+          deltas. The first half of the vector is interpreted as the reference,
+          and the second half as comparison offsets from that reference. Only
+          the delta portion is scaled.
+
+        - 5D experiments with an ancillary variable:
+          `trial_val` contains a 2D reference in the color plane plus a 2D
+          comparison delta. The ancillary coordinate is not sampled by AEPsych
+          within this method; instead it is supplied separately through
+          `self.ref[config_index]` and appended to both stimuli. The comparison
+          inherits the same ancillary value, so its ancillary delta is fixed at 0.
         
         Args:
             trial_counter (int): Current trial number to determine the scaling factor.
-            trial_val (list): Current trial values that need to be scaled and normalized.
-            config_index (int): Index of the current configuration for selecting reference values.
-                                Default is None as this is not relevant for 4d/6d experiments.
+            trial_val (list): Trial parameters proposed by AEPsych. Their role
+                depends on the experiment dimensionality described above.
+            config_index (int): Index used to select the fixed reference or
+                ancillary slice for interleaved/slice-based simulations. This is
+                not needed for full 4D/6D trials where the reference is already
+                contained in `trial_val`.
         
         Returns:
             tuple: 
-                xref (jax.numpy.array): Normalized reference stimulus dimensions 
-                    (W unit: between -1 and 1).
-                x1 (jax.numpy.array): Normalized comparison stimulus dimensions 
-                    (W unit: between -1 and 1).
-                trial_val_report (list): Adjusted values of the trial used for reporting and 
-                    further calculations.
+                xref (jax.numpy.array): Reference stimulus in normalized W units.
+                x1 (jax.numpy.array): Comparison stimulus in normalized W units.
+                trial_val_report (list): Trial values after any delta scaling has
+                    been applied, arranged in the same representation expected by
+                    downstream logging/reporting code.
         """
-
-        if self.expt_dim == 2 or self.expt_dim == 3: #interleaved 2D or 3D experiment
-            # Apply value scaling to adjust comparison values based on experimental progress.
+    
+        if self.expt_dim in [2, 3]:  # Interleaved low-dimensional experiment.
+            # Scale the comparison offset, then add it to the fixed reference for
+            # the current config/condition.
             trial_val_report = self._apply_val_scaling(trial_counter, trial_val)
-            
-            # Normalize reference and comparison stimulus dimensions.
             xref = jnp.array(self.ref[config_index])               
             x1 = jnp.array(trial_val_report) + xref
-        else: #full 4D or 6D experiment
-            # Separate the reference and comparison values for higher dimensions.
+        elif self.expt_dim in [4, 6]:  # Full reference-plus-delta parameterization.
+            # Split the sampled vector into reference coordinates and comparison
+            # deltas. Only the deltas are rescaled over strategy stages.
             trial_val_ref = trial_val[:self.expt_dim//2]
             trial_val_delta_comp = trial_val[(self.expt_dim//2):]
             trial_val_delta_comp_scaled = self._apply_val_scaling(\
                 trial_counter, trial_val_delta_comp)
-            #put reference and delta values to a list and report it back to the client
-            trial_val_report = trial_val_ref + trial_val_delta_comp_scaled #lists
+            # Report the unmodified reference together with the scaled comparison
+            # deltas in the original trial layout.
+            trial_val_report = trial_val_ref + trial_val_delta_comp_scaled
             xref = jnp.array(trial_val_ref)
             
-            # Add deltas on top of the ref stimulus to derive comparison stimulus
+            # Construct the comparison by applying the scaled delta to the
+            # sampled reference.
             x1 = jnp.array(trial_val_delta_comp_scaled) + xref
+        else:  # 5D: 2D reference, 2D delta, and one fixed ancillary coordinate.
+            # The ancillary coordinate is fixed for this slice and injected from
+            # `self.ref`, not sampled as part of `trial_val`.
+            ancillary_val = [self.ref[config_index]]
+            # The first two values are the reference in the color plane; the
+            # remaining two are comparison deltas in that plane.
+            trial_val_ref = trial_val[:2]
+            trial_val_delta_comp = trial_val[2:]
+            trial_val_delta_comp_scaled = self._apply_val_scaling(\
+                trial_counter, trial_val_delta_comp)
+            # Report only the sampled 4D slice coordinates; the ancillary value
+            # is tracked separately through the condition index.
+            trial_val_report = trial_val_ref + trial_val_delta_comp_scaled
+            xref = jnp.array(trial_val_ref + ancillary_val)
+            
+            # Apply the color-plane deltas to the reference and keep the
+            # ancillary coordinate unchanged by appending a zero delta.
+            x1 = jnp.array(trial_val_delta_comp_scaled + [0]) + xref            
         return xref, x1, trial_val_report
     
     def _apply_val_scaling(self, trial_counter, trial_val):
@@ -312,7 +354,7 @@ class SimulateTrialGivenWishart:
             trial_val_scaled_i = trial_val[i]*val_scaler_i
             trial_val_scaled.append(trial_val_scaled_i)
         return trial_val_scaled
-  
+      
     def _predict_probability_correct(self, xref, x1):
         """
         Predicts the probability of correctly identifying the odd stimulus in a 
@@ -370,7 +412,7 @@ class SimulateTrialGivenWishart:
         # Append the values to the corresponding attributes
         for attr_name, value in attributes:
             getattr(self, attr_name).append(value)
-
+    
     def _stack_them_all(self, stacking_ax=0, prefix=""):
         """
         Aggregates all the trial data lists into single arrays for further analysis or storage.
@@ -408,7 +450,7 @@ class SimulateTrialGivenWishart:
                 else:
                     # Skip stacking if any None is found
                     continue
-
+    
     def _monitor_time_insert_pregenerated_trials(self, start_time, max_wait_time,
                                                  pregenerated_trials, stop_event):
         # Function to monitor elapsed time and perform side tasks
@@ -441,12 +483,12 @@ class SimulateTrialGivenWishart:
                     print("All pre-generated trials have been used.")
                     break
             time.sleep(0.05)  # Check every 50 ms
-   
+       
     def run_simulation(self, client, pregenerated_trials = None, max_wait_time = None):
         """
         Simulates color-discrimination responses using AEPsych and ground truth data. 
         Ground truth can be based on Wishart fits to pilot data or CIELAB thresholds.
-
+    
         This method interleaves AEPsych trials with pregenerated trials. If 
         AEPsych takes too long to generate a trial, a pregenerated trial is used instead. 
         Unlike the run_simulation_wMOCSinserted method, this approach does not require 
@@ -454,7 +496,7 @@ class SimulateTrialGivenWishart:
         near thresholds or other predefined configurations. Additionally, this method 
         does not rely on a pseudorandomized pregenerated trial sequence but inserts 
         pregenerated trials dynamically when needed.
-
+    
         Args:
             client (object): AEPsych client instance used to configure and query trials.
             pregenerated_trials (dict): A dictionary containing pregenerated trial pairs 
@@ -555,15 +597,14 @@ class SimulateTrialGivenWishart:
             
         # Record time
         self.time_elapsed = time_elapsed
-
-#%%            
+        
     def _monitor_time_insert_MOCS_trials(self, start_time, max_wait_time,
                                          trial_sequence, expt_counter, trial_counter, 
                                          stop_event, mocs_triggered):
         """
         Monitors elapsed time and performs tasks such as running MOCS trials 
         if the deadline is exceeded.
-
+    
         Parameters:
         - start_time: Time when the monitoring started.
         - max_wait_time (list): Time limits for AEPsych trial generation. The first 
@@ -574,13 +615,13 @@ class SimulateTrialGivenWishart:
         - trial_counter (int): Counter to track the current trial index.
         - stop_event: An event to signal the thread to stop monitoring.
         - mocs_triggered: A threading event to indicate a MOCS trial was executed.
-
+    
         Behavior:
         - Checks if the elapsed time exceeds the current threshold in `max_wait_time`.
         - If exceeded, it runs a MOCS trial by updating the trial sequence with pre-generated data.
         - Updates the trial status and flags the MOCS trial as completed.
         - Resets the start time for the next monitoring cycle and increments the count of MOCS trials executed.
-
+    
         Returns:
         - None. Updates are made to the `trial_sequence` object directly.
         """      
@@ -613,7 +654,7 @@ class SimulateTrialGivenWishart:
                 
                 # Set the flag to indicate a MOCS trial was run
                 mocs_triggered.set() 
-
+    
                 # Reset the start time for the next pre-generated trial
                 start_time = time.time()
                 num_bumped_up_MOCS += 1
@@ -622,16 +663,15 @@ class SimulateTrialGivenWishart:
                 trial_sequence.final_sequence[expt_counter].append(trial_placement_id)
             time.sleep(0.05)  # Check every 50 ms
         
-        #%%
     def run_simulation_wMOCSinserted(self, client, trial_sequence, max_wait_time=[2.4, 3.6]):
         """
         Simulates color-discrimination responses using AEPsych and ground truth data. 
         Ground truth can be based on Wishart fits to pilot data or CIELAB thresholds.
-
+    
         This method interleaves AEPsych trials with pre-generated MOCS trials. If 
         AEPsych takes too long to generate a trial, a MOCS trial is inserted as a 
         fallback. The interleaving sequence is pre-generated in the `trial_sequence` class.
-
+    
         Args:
             client (object): AEPsych client instance used to configure and query trials.
             trial_sequence (object): Contains trial sequence information for interleaving
@@ -642,7 +682,7 @@ class SimulateTrialGivenWishart:
         """    
         time_elapsed = []  # List to store elapsed time for AEPsych trials
         trial_counter = 0  # Counter to track the current trial number
-
+    
         while trial_counter < trial_sequence.nTrials_total:            
             for expt_idx in range(self.numConfig):  
                 
@@ -737,16 +777,16 @@ class SimulateTrialGivenWishart:
                 trial_sequence.final_sequence[expt_idx].append(trial_identity)
                 # Increment trial counter
                 trial_counter += 1
-  
+      
         # Aggregate trial data lists into single arrays
         self._stack_them_all()
-
+    
         # Record the total elapsed times for AEPsych trials only
         self.time_elapsed = time_elapsed
     
         # Return the updated trial_sequence with new data
         return trial_sequence
-    
+
 #%%
 class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
     def __init__(self, expt_dim, config_all, gt_Wishart, ref = None, 
@@ -770,7 +810,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
             raise ValueError(
                 "comp1 must be provided for 2D or 3D suprathreshold experiments."
             )
-   
+       
     def _create_pseudorandom_order(self):
         """
         Generate a 2D array specifying the order of trial configurations for each trial set.
@@ -798,7 +838,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
             rng.shuffle(pseudo_order[:, i])
     
         return pseudo_order
-
+    
     def _init_trial_lists(self, prefix=""):
         """
         Initializes lists to store data collected during the trial simulation.
@@ -850,7 +890,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
         # Append the values to the corresponding attributes
         for attr_name, value in attributes:
             getattr(self, attr_name).append(value)
-
+    
     def _stack_them_all(self, stacking_ax=0, prefix=""):
         """
         Aggregates all the trial data lists into single arrays for further analysis or storage.
@@ -890,7 +930,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
                 else:
                     # Skip stacking if any None is found
                     continue
-
+    
     def _derive_xref_x1_x2(self, trial_counter, trial_val, config_index = None):
         """
         Derives normalized reference and comparison stimulus dimensions based on the 
@@ -939,7 +979,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
         else: 
             print('not supported right now!')
         return xref, x1, x2, trial_val_report
-
+    
     def _predict_probability_correct(self, xref, x1, x2):
         """
         Predicts the probability of correctly identifying the odd stimulus in a 
@@ -979,7 +1019,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
         """
         Simulates color-discrimination responses using AEPsych and ground truth data. 
         Ground truth can be based on Wishart fits to pilot data or CIELAB thresholds.
-
+    
         This method interleaves AEPsych trials with pregenerated trials. If 
         AEPsych takes too long to generate a trial, a pregenerated trial is used instead. 
         Unlike the run_simulation_wMOCSinserted method, this approach does not require 
@@ -987,7 +1027,7 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
         near thresholds or other predefined configurations. Additionally, this method 
         does not rely on a pseudorandomized pregenerated trial sequence but inserts 
         pregenerated trials dynamically when needed.
-
+    
         Args:
             client (object): AEPsych client instance used to configure and query trials.
             pregenerated_trials (dict): A dictionary containing pregenerated trial pairs 
@@ -1049,4 +1089,4 @@ class SimulateTrialGivenWishart_suprathres(SimulateTrialGivenWishart):
         # Record time
         self.time_elapsed = time_elapsed
         
-
+    

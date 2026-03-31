@@ -26,8 +26,8 @@ class ConfigGenerator:
             ValueError: If the experiment dimension is not one of the allowed values.
         """
 
-        if expt_dim not in (2, 3, 4, 6):
-            raise ValueError("The color discrimination task must be either 2, 3, 4 or 6.")
+        if expt_dim not in (2, 3, 4, 5, 6):
+            raise ValueError("The color discrimination task must be either 2, 3, 4, 5 or 6.")
         self.expt_dim            = expt_dim
         self.load_default_config = load_default_config
         self.base_path           = base_path
@@ -102,6 +102,13 @@ class ConfigGenerator:
             lb                = [-0.75, -0.75, -0.25, -0.25]    
             ub                = [0.75, 0.75, 0.25, 0.25] 
             """
+        elif self.expt_dim == 5:
+            config_dim_specific_part = """
+            [common]
+            parnames          = [ref_dim1, ref_dim2, delta_dim1, delta_dim2, ancillary]
+            lb                = [-0.75, -0.75, -0.25, -0.25, -0.7]    
+            ub                = [0.75, 0.75, 0.25, 0.25, 0.7] 
+            """            
         else:
             config_dim_specific_part = """
             [common]

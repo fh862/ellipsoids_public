@@ -23,12 +23,7 @@ import dill as pickled
 from tqdm import trange
 import numpy as np
 from copy import deepcopy
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from analysis.utils_load import select_file_and_get_path
 from analysis.model_performance import ModelPerformance
 
@@ -48,7 +43,7 @@ full_path = os.path.join(input_fileDir_fits, file_name)
 # Load the necessary variables from the file
 with open(full_path, 'rb') as f:
     vars_dict = pickled.load(f)
-model_pred = deepcopy(vars_dict['model_pred_Wishart'])
+model_pred = deepcopy(vars_dict['model_pred_Wishart_grid_isoluminant'])
 ndims = model_pred.ndims    
 
 # Reuse cached fine-grid quantities if available; otherwise compute and store.
@@ -57,6 +52,12 @@ if "grid_fine" in vars_dict.keys() and "Sigmas_noise_grid_org" in vars_dict.keys
     Sigmas_noise_grid_org = vars_dict["Sigmas_noise_grid_org"]
     num_grid_pts_fine = grid_fine.shape[0]
 else:
+    
+    #for dichromats 
+    # grid_fine1 = jnp.linspace(-0.6, 0.6, 73)
+    # grid_fine2 = jnp.linspace(-0.85, 0.85, 103)
+    # grid_fine = jnp.stack(jnp.meshgrid(grid_fine1, grid_fine2), axis = -1)
+    
     # Define the fine prediction grid
     num_grid_pts_fine = 103
     grid_fine = jnp.stack(
@@ -85,7 +86,7 @@ else:
 # The per-bootstrap NBS result is cached back into the corresponding bootstrap
 # pickle to avoid repeating expensive matrix computations.
 
-nDatasets = 62
+nDatasets = 120
 
 #initialize
 NBS_fine_grid_btst = np.full((nDatasets, *grid_fine.shape[:-1]), np.nan)

@@ -97,6 +97,7 @@ other settings).
 
 """
 
+flag_running_on_hpc = False
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -116,36 +117,43 @@ from analysis.utils_load import load_expt_data
 from analysis.cross_validation import CrossValidation
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs
-from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
-    Plot2DPredSettings, add_CI_ellipses
-from plotting.wishart_plotting import PlotSettingsBase 
-from plotting.modelperf_plotting import NFoldsCrossValidationVisualization, \
-    PltVaryingHyperParamSettings
+from dconfig.config_4Ddata import DatasetConfig_4D
+from dconfig.config_6Ddata import DatasetConfig_6D
+if not flag_running_on_hpc:
+    from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
+        Plot2DPredSettings, add_CI_ellipses
+    from plotting.wishart_plotting import PlotSettingsBase 
+    from plotting.modelperf_plotting import NFoldsCrossValidationVisualization, \
+        PltVaryingHyperParamSettings
 
 #%%
 # -----------------------------------------------------------
 # SECTION 1: Set up directories and load model predictions
 # -----------------------------------------------------------
 # Define base directory (adjusted for local access; comment out if running on HPC)
-flag_running_on_hpc = False
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
     '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
+subN = 1
+#dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
+dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+dcfg.print_summary()
+
 # Specify participant and experiment details
-stim_dims = 2
-psyfield_dims = 4   # Dimensionality of the psychometric field (2 dims for the ref; 2 dims for the delta)
-################## THINGS NEEDED TO CHANGE ##################
-subN = 8           # Subject number
-nSessions = 12     # Total number of experimental sessions
 hyper_param = 'DecayRate' # 'DecayRate' or 'VarianceScale'
-#############################################################
 
 # Specify color plane for analysis and load relevant transformation matrices
-color_thres_data = color_thresholds(stim_dims, base_dir, plane_2D = 'Isoluminant plane')
-color_thres_data.load_transformation_matrix(file_date = "02242025")
+color_thres_data = color_thresholds(dcfg.stim_dims, 
+                                    base_dir, 
+                                    plane_2D=dcfg.plane_2D, #None for 3D
+                                    ) 
+
+if dcfg.stim_dims == 2:
+    color_thres_data.load_transformation_matrix(file_date = dcfg.file_date)
 
 # Set output directory for saving model fitting results or plots
-output_fileDir_fits = os.path.join(base_dir, 'hpc_sweeps', f'cv_{hyper_param}', f'sub{subN}')
+output_fileDir_fits = os.path.join(base_dir, 'hpc_sweeps', f'cv_{hyper_param}',
+                                   f'sub{subN}', f"{dcfg.stim_dims}D{dcfg.psyfield_dims}D")
 os.makedirs(output_fileDir_fits, exist_ok=True)
 
 #%%
@@ -159,10 +167,12 @@ total_folds = 5
 shuffle_seed = subN
     
 # Retrieve file paths and metadata for all sessions of the given subject
-path_str = os.path.join(base_dir, 'ELPS_analysis', 'Experiment_DataFiles',
-                        'pilot2', f'sub{subN}')
 session_files, session_file_name_part1 = \
-    load_expt_data.get_all_sessions_file_names(subN, nSessions, path_str)
+    load_expt_data.get_all_sessions_file_names(subN, 
+                                               dcfg.nSession, 
+                                               dcfg.path_str,
+                                               exptCond = dcfg.exptCond
+                                               )
 
 # Load data from all session files into a list
 data_allSessions = load_expt_data.load_data_all_sessions(session_files)
@@ -203,20 +213,12 @@ opt_params = {
 
 # Repeat optimization from multiple random initializations to reduce the risk of
 # converging to a poor local minimum
-nRepeats = 3 
-
-# Number of grid points along each axis for evaluating model predictions
-NUM_GRID_PTS = 7
+nRepeats = 3 # or 1
 
 # Generate a multidimensional grid spanning the model's 2D subspace 
 # The range [-0.7, 0.7] covers the normalized model space
-grid = jnp.stack(
-    jnp.meshgrid(*[jnp.linspace(-0.7, 0.7, NUM_GRID_PTS) for _ in range(stim_dims)]),
-    axis=-1
-)
-
-# Target percent correct value corresponding to the discrimination threshold
-target_pC = 2/3  # 2AFC midpoint between chance (0.5) and perfect (1.0)
+grid = dcfg.grid
+grid_shape = grid.shape[:-1]
 
 # Decide the sweep values
 if hyper_param == "DecayRate":
@@ -251,7 +253,7 @@ hp_symbol = {"DecayRate": r"\epsilon", "VarianceScale": r"\gamma"}[hyper_param]
 # Fixed model kwargs
 base_kwargs = dict(
     degree=5,
-    num_dims = stim_dims,
+    num_dims = dcfg.stim_dims,
     extra_dims = 1,
     variance_scale=3e-4,# default (will be overridden if sweeping VarianceScale)
     decay_rate=0.4,     # default (will be overridden if sweeping DecayRate)
@@ -260,11 +262,10 @@ base_kwargs = dict(
 
 # output file
 # List of variable names to be saved
-variable_names = ['subN','stim_dims','psyfield_dims','nSessions', 'color_thres_data',
-                  'total_folds', 'shuffle_seed', 'data_allSessions', 'aepsych_data', 
-                  'sobol_data', 'combined_data', 'data_shuffled', 'data_split_NFold', 
-                  'NUM_GRID_PTS', 'opt_params', 'nRepeats', 'grid', 'target_pC',
-                  'hyper_param','hyper_param_arr', 'n_hyper_param']
+variable_names = ['subN', 'color_thres_data', 'total_folds', 'shuffle_seed', 
+                  'data_allSessions', 'aepsych_data', 'sobol_data', 'combined_data', 
+                  'data_shuffled', 'data_split_NFold', 'opt_params', 'nRepeats', 
+                  'grid', 'hyper_param','hyper_param_arr', 'n_hyper_param']
 
 # Dictionary to store variable names and their corresponding values
 vars_dict = {}
@@ -323,7 +324,7 @@ if flag_running_on_hpc:
                         W_init, data_keep, model, OPT_KEY,
                         copy.deepcopy(opt_params),
                         oddity_task.simulate_oddity, 
-                        total_steps=1500, #NOTE that we might have to increase this value for some hyperparameter values
+                        total_steps=dcfg.opt_total_steps, #NOTE that we might have to increase this value for some hyperparameter values
                         save_every=1,
                         show_progress=True
                     )
@@ -344,12 +345,12 @@ if flag_running_on_hpc:
                                                             OPT_KEY, W_init,
                                                             W_est, Sigmas_noise_grid,
                                                             color_thres_data, 
-                                                            target_pC = target_pC,
+                                                            target_pC = 0.667,
                                                             ngrid_bruteforce = 1000,
-                                                            bds_bruteforce = [0.0005, 0.25])
+                                                            bds_bruteforce = dcfg.bds_bruteforce)
                     
                     # batch compute 66.7% threshold contour based on estimated weight matrix
-                    model_pred_Wishart.convert_Sig_Threshold_oddity_batch(grid)
+                    # model_pred_Wishart.convert_Sig_Threshold_oddity_batch(grid)
                 except Exception as e:
                     print(f"Failed attempt (will retry): {e}")
                     continue  # skip everything below and try again
@@ -447,7 +448,8 @@ if not flag_running_on_hpc:
     nLP_training = np.full(base_shape, np.nan)   # Negative log posterior
     nLL_training = np.full(base_shape, np.nan)   # Negative log likelihood (training)
     nLL_test = np.full(base_shape, np.nan)       # Negative log likelihood (test)
-    params_ell = np.full(base_shape + (NUM_GRID_PTS, NUM_GRID_PTS, 5), np.nan)
+    #optional
+    params_ell = np.full(base_shape + grid_shape + (5,), np.nan)
 
     # Iterate over all decay rates
     for d, val in enumerate(hyper_param_arr):
@@ -488,13 +490,13 @@ if not flag_running_on_hpc:
             nLL_training[d, f] = nLL_training_allreps[idx_i]
             nLL_test[d, f] = nLL_test_allreps[idx_i]
             
-            # ell parameters
-            var_dfi_min_nLP = vars_dict_set_d[f"{hyper_param}{val:.{decimals}f}_CVfold{f}_rep{idx_i+1}"]
             # Extract ellipse parameters at each grid point
-            for k in range(NUM_GRID_PTS):
-                for l in range(NUM_GRID_PTS):
+            
+            # load params_ell (optional)
+            if hasattr(var_dfi['model_pred_Wishart'], 'params_ell'):
+                for idx in np.ndindex(grid_shape):
                     # Format: (x0, y0, a, b, theta)
-                    params_ell[d, f, k, l] = var_dfi['model_pred_Wishart'].params_ell[k][l]
+                    params_ell[d, f, *idx] = var_dfi['model_pred_Wishart'].params_ell[idx[0]][idx[1]]
 
     # Average and std dev across folds (for plotting or model selection)
     nLL_test_avg = np.nanmean(nLL_test, axis=1)
@@ -521,6 +523,7 @@ if not flag_running_on_hpc:
     nLL_vis_settings = replace(PltVaryingHyperParamSettings(), **pltSettings_base.__dict__)
     nLL_vis_settings = replace(nLL_vis_settings,
                                fig_size = (5, 3),
+                               ylim = [0.4, 0.58],
                                xticks = [1e-6, 3e-4, 1e-3, 3e-3] \
                                    if hyper_param == 'VarianceScale' else None,
                                xticklabels = [r"$10^{-6}$", "0.0003", "0.001", "0.003"] \
@@ -577,15 +580,14 @@ if not flag_running_on_hpc:
         )
 
         # Plot confidence ellipses across the 2D grid
-        for i in range(NUM_GRID_PTS):
-            for j in range(NUM_GRID_PTS):
-                cm = color_thres_data.W2D_to_rgb(grid[i,j])
-                lbl = f'Full range of model predictions evaluated \nusing {total_folds}'+\
-                    '-fold cross-validation' if (i == 0 and j == 0) else None
-                add_CI_ellipses(
-                    fitEll_min[i, j], fitEll_max[i, j], ax=ax_d,
-                    cm=cm, label=lbl, lw_inner = 0, lw_outer=1, alpha=0.9
-                )
+        for idx in np.ndindex(grid_shape):
+            cm = color_thres_data.W2D_to_rgb(grid[*idx])
+            lbl = f'Full range of model predictions evaluated \nusing {total_folds}'+\
+                '-fold cross-validation' if idx == (0, 0) else None
+            add_CI_ellipses(
+                fitEll_min[*idx], fitEll_max[*idx], ax=ax_d,
+                cm=cm, label=lbl, lw_inner = 0, lw_outer=1, alpha=0.9
+            )
 
         # Overlay joint model predictions on top of CI ellipses
         wishart_pred_vis_wCI.plot_2D(grid, ax=ax_d, settings=pred2D_settings)

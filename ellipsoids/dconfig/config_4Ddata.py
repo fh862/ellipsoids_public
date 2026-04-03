@@ -28,6 +28,7 @@ class DatasetConfig_4D:
     # optional core fields
     adaptation_cond_str: str = ''
     bds_bruteforce: Sequence[float] = (0.0005, 0.3)
+    opt_total_steps: int = 1500
     exptCond: Optional[str] = None
     file_name: Optional[str] = None
 
@@ -38,6 +39,9 @@ class DatasetConfig_4D:
     grid_lim: float = 0.7
     grid_lim_1: float = 0.45
     grid_lim_2: float = 0.7
+    
+    stim_dims: int = 2
+    psyfield_dims: int = 4
 
     # optional fields for simulated data
     coloralg: Optional[str] = None
@@ -72,13 +76,13 @@ class DatasetConfig_4D:
         if self.num_grid_pts is not None:
             self.grid_1d = jnp.linspace(-self.grid_lim, self.grid_lim, self.num_grid_pts)
             self.grid = jnp.stack(
-                jnp.meshgrid(self.grid_1d, self.grid_1d, indexing='ij'),
+                jnp.meshgrid(self.grid_1d, self.grid_1d),
                 axis=-1
             )
         elif self.num_grid_pts1 is not None and self.num_grid_pts2 is not None:
             self.grid_1 = jnp.linspace(-self.grid_lim_1, self.grid_lim_1, self.num_grid_pts1)
             self.grid_2 = jnp.linspace(-self.grid_lim_2, self.grid_lim_2, self.num_grid_pts2)
-            g1, g2 = jnp.meshgrid(self.grid_1, self.grid_2, indexing='ij')
+            g1, g2 = jnp.meshgrid(self.grid_1, self.grid_2)
             self.grid = jnp.stack([g1, g2], axis=-1)
         else:
             raise ValueError("Grid specification is incomplete.")
@@ -115,8 +119,8 @@ class DatasetConfig_4D:
                 '4D_Expt_varyingBackground', f'sub{subN}'
             ),
             plane_2D='Isoluminant plane',
-            file_date='10062025',
-            adaptation_cond_str='_gray',
+            file_date='10062025', #'10062025' for '_blue' and '_gray' and '02012026' for '_orange'
+            adaptation_cond_str='_gray', #'_blue', '_orange'
             exptCond='_4dExpt_Isoluminant plane',
             num_grid_pts=7,
             bds_bruteforce=[0.0005, 0.3],
@@ -170,6 +174,7 @@ class DatasetConfig_4D:
         print(f"nSession        : {self.nSession}")
         print(f"path_str        : {self.path_str}")
         print(f"plane_2D        : {self.plane_2D}")
+        print(f"cal_file_date   : {self.file_date}")
     
         if self.num_grid_pts1 is not None and self.num_grid_pts2 is not None:
             print(f"num_grid_pts1   : {self.num_grid_pts1}")

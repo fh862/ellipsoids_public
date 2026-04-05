@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Union
 from datetime import datetime
 import plotly.graph_objects as go
-import os
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 from core import viz, model_predictions 
 from analysis.ellipsoids_tools import EllipsoidSurfaceMesh

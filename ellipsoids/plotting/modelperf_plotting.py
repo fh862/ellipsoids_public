@@ -105,6 +105,7 @@ class PltVaryingHyperParamSettings(PlotSettingsBase):
     ls_training: str = '--'
     ls_test: str = '-'
     xlabel: str = r'Hyperparameter for irregularity ($\epsilon$)'
+    ylim: Optional[np.ndarray] = None
     xticks: Optional[np.ndarray] = None 
     xticklabels: Optional[np.ndarray] = None 
     label_CI: str = 'full range'
@@ -323,9 +324,12 @@ class NFoldsCrossValidationVisualization(PlottingTools):
         ax.set_ylabel(f'Mean negative log likelihood (nLL)\nof the model across {total_folds} folds')
 
         # Compute y-axis limits from confidence intervals
-        y_lb = np.min(np.vstack((nLL_training_CI[0], nLL_test_CI[0])))
-        y_ub = np.max(np.vstack((nLL_training_CI[1], nLL_test_CI[1])))
-        ax.set_ylim([y_lb - 0.01, y_ub + 0.01])
+        if settings.ylim is None:
+            y_lb = np.min(np.vstack((nLL_training_CI[0], nLL_test_CI[0])))
+            y_ub = np.max(np.vstack((nLL_training_CI[1], nLL_test_CI[1])))
+            ax.set_ylim([y_lb - 0.01, y_ub + 0.01])
+        else:
+            ax.set_ylim(*settings.ylim)
 
         # Add legend
         ax.legend(fontsize=settings.legend_fontsize)

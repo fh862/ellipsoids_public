@@ -78,7 +78,7 @@ scaler = 1
 deltaE_1JND = 2.5
 
 # Choice of color-difference metric for ΔE computations
-color_diff_algorithm = 'CIE2000' #or CIE1976, CIE1994, CIE2000
+color_diff_algorithm = 'CIE1976' #or CIE1976, CIE1994, CIE2000
 
 # Unit direction vectors on the sphere (shape: (numDirPts_z, numDirPts_xy, 3) or similar)
 grid_xyz = UnitCircleGenerate_3D(numDirPts_xy, numDirPts_z)
@@ -87,7 +87,7 @@ grid_xyz = UnitCircleGenerate_3D(numDirPts_xy, numDirPts_z)
 grid_ref = np.linspace(lb_RGB_grid, ub_RGB_grid, nGridPts_ref)
 
 # 3D mesh of reference RGB locations; shape: (nGridPts_ref, nGridPts_ref, nGridPts_ref, 3)
-ref_points = np.stack(np.meshgrid(grid_ref, grid_ref, grid_ref, indexing="ij"), axis=-1)
+ref_points = np.stack(np.meshgrid(grid_ref, grid_ref, grid_ref), axis=-1)
 
 # Threshold-search helper configured with the chosen background
 sim_thres_CIELab = SimThresCIELab(background_RGB)
@@ -181,7 +181,6 @@ vis_html.apply_3d_layout(fig)
 # Save interactive HTML
 out_html = os.path.join(output_figDir, f"{figname}_grid{nGridPts_ref}.html")
 fig.write_html(out_html, include_plotlyjs=True)
-    
     
 #%% Save data
 file_name = f'{figname}.pkl'

@@ -64,32 +64,26 @@ from dconfig.config_4Ddata import DatasetConfig_4D
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
     '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
-stim_dims = 2
-psyfield_dims = 4
-subN = 15
+subN = 2
 
 # choose one dataset
-dcfg = DatasetConfig_4D.human_ls_isolating(base_dir, subN)
-# dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
+# dcfg = DatasetConfig_4D.human_ls_isolating(base_dir, subN)
+dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
 # dcfg = DatasetConfig_4D.human_varying_background(base_dir, subN)
 # dcfg = DatasetConfig_4D.simulated_isoluminant(base_dir, subN)
 
 dcfg.print_summary()
 nSession = dcfg.nSession
 
-# modify anything if needed
-# dcfg.nSession = 7
-# dcfg.__post_init__()   # rerun only if you changed something that affects derived fields
-
 # Define the color plane and load for transformation matrices
-color_thres_data = color_thresholds(2, base_dir, plane_2D = dcfg.plane_2D) 
+color_thres_data = color_thresholds(dcfg.stim_dims, base_dir, plane_2D = dcfg.plane_2D) 
 color_thres_data.load_transformation_matrix(file_date = dcfg.file_date)  
 
 #specify figure name and path
 if flag_running_on_hpc:
     output_fileDir_fits = os.path.join(base_dir, 'hpc_sweeps', 'model_fitting',
                                        dcfg.coloralg if not dcfg.flag_load_datafile else '',
-                                       f'sub{subN}', f'{stim_dims}D{psyfield_dims}D')
+                                       f'sub{subN}', f'{dcfg.stim_dims}D{dcfg.psyfield_dims}D')
     output_figDir_fits = os.path.join(output_fileDir_fits, 'figs')    
 else:
     output_fileDir_fits = os.path.join(dcfg.path_str,'fits')
@@ -186,7 +180,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     # -----------------------------------------------------------------------
     # Create settings instance with custom fig_dir
     pltSettings_tp = replace(Plot2DSamplingSettings(), **pltSettings_base.__dict__)
-    sampling_vis = SamplingRefCompPairVisualization(stim_dims,
+    sampling_vis = SamplingRefCompPairVisualization(dcfg.stim_dims,
                                                     color_thres_data,
                                                     settings = pltSettings_tp,
                                                     save_fig = False
@@ -203,7 +197,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
         # Construct a filename for each figure based on the plane and number of experiments.
         str_idx = f'{ub_i:05}total' if lb_i == 0 else f'{ub_i:05}total_from{lb_i:05}'
         fig_name = f"TrialPlacement_isothreshold_{color_thres_data.plane_2D}_"+\
-                    f"{psyfield_dims}DExpt_{str_idx}_sub{subN}{str_ext}{dcfg.adaptation_cond_str}"
+                    f"{dcfg.psyfield_dims}DExpt_{str_idx}_sub{subN}{str_ext}{dcfg.adaptation_cond_str}"
         pltSettings_tp = replace(pltSettings_tp,
                                  ref_markeralpha = marker_alpha[i],
                                  comp_markeralpha = marker_alpha[i],
@@ -231,10 +225,10 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     # -----------------------------------------------------------------------
     model = WishartProcessModel(
         5,         # Degree of the polynomial basis functions
-        stim_dims, # Number of stimulus dimensions
+        dcfg.stim_dims, # Number of stimulus dimensions
         1,         # Number of extra inner dimensions in `U`.
         3e-4,      # Scale parameter for prior on `W`.
-        0.5,       # Geometric decay rate on `W`. default = 0.4
+        0.4,       # Geometric decay rate on `W`. default = 0.4
         0,         # Diagonal term setting minimum variance for the ellipsoids.
     )
 
@@ -265,7 +259,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
             W_init_i, data, model, OPT_KEY_i,
             opt_params,
             oddity_task.simulate_oddity, 
-            total_steps=1500,
+            total_steps= dcfg.opt_total_steps,
             save_every=1,
             show_progress=True
         )
@@ -356,7 +350,7 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     output_file = f'{fig_name_part1}.pkl'
     full_path = os.path.join(output_fileDir_fits, output_file)
     
-    variable_names = ['subN', 'stim_dims', 'psyfield_dims','color_thres_data',
+    variable_names = ['subN', 'dcfg.stim_dims', 'dcfg.psyfield_dims','color_thres_data',
                       'nSessions', 'btst_seed', 'data_allSessions', 'nTrials_strat',
                       'xref_MOCS_list', 'x1_MOCS_list', 'y_MOCS_list', 'xref_MOCS', 
                       'x1_MOCS','y_MOCS', 'xref_unique_MOCS', 'nRefs_MOCS', 

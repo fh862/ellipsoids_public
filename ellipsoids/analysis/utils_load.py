@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import filedialog
 import os
 import re
+from numbers import Integral
 import dill as pickled
 import jax.numpy as jnp
 import numpy as np
@@ -186,7 +187,8 @@ class load_expt_data:
 
         Parameters:
         subN (int or str): Subject number or identifier.
-        nSessions (int): Total number of sessions.
+        nSessions (int or iterable of int): Total number of sessions, or the
+            explicit session numbers to import.
         path_str (str): Base directory path where session files are stored.
 
         Returns:
@@ -196,10 +198,15 @@ class load_expt_data:
         # Construct the common part of the session file names
         session_file_name_part1 = f'ColorDiscrimination{exptCond}_sub{subN}'
 
+        if isinstance(nSessions, Integral):
+            session_ids = range(1, nSessions + 1)
+        else:
+            session_ids = nSessions
+
         # Generate full file paths for all session files
         session_files = [
-            os.path.join(path_str, f'{session_file_name_part1}_session{n+1}{str_ext}.pkl')
-            for n in range(nSessions)
+            os.path.join(path_str, f'{session_file_name_part1}_session{session_id}{str_ext}.pkl')
+            for session_id in session_ids
         ]
         
         return session_files, session_file_name_part1

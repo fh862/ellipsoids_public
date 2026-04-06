@@ -21,7 +21,8 @@ class BinnedPC:
           - 3D: bin by (theta, elevation-u) or (theta, phi)
 
         Notes (3D):
-          - Uses u = z = sin(phi) binning by default (equal-area in elevation).
+          - Computes u = z = sin(phi), but bin_3d currently bins by phi edges
+            when edges_phi_deg(...) is used.
           - Theta is always azimuth atan2(y, x) in [-pi, pi).
         """
         self.xref = np.asarray(xref)

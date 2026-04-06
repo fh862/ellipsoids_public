@@ -43,7 +43,7 @@ full_path = os.path.join(input_fileDir_fits, file_name)
 # Load the necessary variables from the file
 with open(full_path, 'rb') as f:
     vars_dict = pickled.load(f)
-model_pred = deepcopy(vars_dict['model_pred_Wishart_grid_isoluminant'])
+model_pred = deepcopy(vars_dict['model_pred_Wishart']) #model_pred_Wishart_grid_isoluminant
 ndims = model_pred.ndims    
 
 # Reuse cached fine-grid quantities if available; otherwise compute and store.
@@ -124,7 +124,7 @@ for r in trange(nDatasets):
 
     else:
         # Compute covariance matrices on the same fine grid for bootstrap fit r.
-        model_pred_btst = deepcopy(vars_dict_btst["model_pred_Wishart_grid_isoluminant"])
+        model_pred_btst = deepcopy(vars_dict_btst["model_pred_Wishart"])
         model_btst = model_pred_btst.model
         W_btst = model_pred_btst.W_est
 

@@ -51,10 +51,12 @@ from dataclasses import replace
 from tqdm import trange
 from copy import deepcopy
 from core.model_predictions import rerun_model_pred_wExisting_model
-from analysis.utils_load import select_file_and_get_path, extract_sub_number
+from dconfig.config_4Ddata import DatasetConfig_4D_MOCS
+from dconfig.config_6Ddata import DatasetConfig_6D
+from analysis.color_thres import color_thresholds
 from analysis.MOCS_thresholds import fit_PMF_MOCS_trials, sim_MOCS_trials
 from plotting.visualize_MOCS import MOCSTrialsVisualization, PlotPMFSettings,\
-    PlotThresCompSettings, PlotThresCompSettings_bds 
+    PlotThresCompSettings, PlotThresCompSettings_bds, PlotThresComp3DSettings_bds
 from plotting.wishart_plotting import PlotSettingsBase 
 
 # %%
@@ -65,42 +67,40 @@ from plotting.wishart_plotting import PlotSettingsBase
 base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
 #change the knob here
-#############################
-stim_dims = 2
-psyfield_dims = 4
-load_actualData = False
-#############################
+subN = 1
 
-#either load data from a 4D experiment
-if load_actualData:    
-    if psyfield_dims == 4:
-        # Prompt user to select the pickled model fit file
-        #'ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits'
-        #'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.5_varScaler0.0003_nBasisDeg5.pkl'
-        fits_path, file_name = select_file_and_get_path()
-        #extract subject number
-        subN = extract_sub_number(file_name)
-        Wishart_full_path = os.path.join(fits_path, file_name)
-    else:
-        raise ValueError('No 3D pilot data; Pilot interleaved 2D data will no longer be analyzed.')
-#or load simulated MOCS data
-else:
-    # === Scenario (2): Load 2D simulated data based on the Wishart model ===    
-    # 'ELPS_analysis/Simulation_DataFiles/MOCS/gt_CIE'
-    # 'Sim2dTask_colorDiscrimination_Isoluminant plane_MOCStrials_25refs_12levels_20trialsPerLevel_subCIE1994_Sobol_seed2000.pkl'
-    fits_path, file_name_fits = select_file_and_get_path()
-    MOCS_full_path = os.path.join(fits_path, file_name_fits)
-    subN = file_name_fits.split('sub')[1].split('_Sobol')[0] #CIE1994
-    
-    #'META_analysis/ModelFitting_DataFiles/4dTask/CIE/sub1'
-    #'Fitted_Sim4dTask_colorDiscrimination_EAVC_6000Trials_300_300_300_5100_sub1_gtCIE1994_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
-    Wishart_path, file_name = select_file_and_get_path()
-    Wishart_full_path = os.path.join(Wishart_path, file_name)
+# choose one dataset
+dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+# dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN)
+# dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
+
+#print out summary
+dcfg.print_summary()
+
+#color thres object
+color_thres_data = color_thresholds(dcfg.stim_dims,
+                                    base_dir, 
+                                    plane_2D = dcfg.plane_2D,
+                                    )
+if dcfg.stim_dims == 2: 
+    color_thres_data.load_transformation_matrix(file_date = dcfg.file_date)
+
+# Load the Wishart fit and, when needed, the separate simulated MOCS dataset.
+#
+# 6D human data stores the MOCS summaries inside the fitted-model pickle, so we
+# only need the Wishart fit path. In contrast, simulated 4D MOCS analyses use
+# one pickle for the simulated MOCS trials and another for the fitted Wishart
+# model.
+fits_path = dcfg.wishart_dir
+file_name = dcfg.wishart_file_name
+MOCS_full_path = dcfg.mocs_full_path
+Wishart_full_path = dcfg.wishart_full_path
         
 # Output directories for figures and processed data
 decayRate = float(re.search(r"decayRate([0-9.]+)", file_name).group(1))
-output_figDir = os.path.join(os.path.dirname(os.path.join(fits_path.replace('DataFiles', 'FigFiles'))),
-                             f'decayRate{decayRate}') #'MOCS', 
+output_figDir_temp = os.path.join(fits_path.replace('DataFiles', 'FigFiles'))
+output_figDir = os.path.join(os.path.dirname(output_figDir_temp),
+                             f'decayRate{decayRate}') 
 os.makedirs(output_figDir, exist_ok= True)   
 
 # %%
@@ -108,22 +108,15 @@ os.makedirs(output_figDir, exist_ok= True)
 # SECTION 2: Load and organize the pilot data 
 # -----------------------------------------------------------
 # Load the necessary variables from the file
-if load_actualData:
-    with open(Wishart_full_path, 'rb') as f:
-        vars_dict = pickled.load(f)     
-    xref_unique, refStimulus, compStimulus, responses, nRefs, nLevels, nTrials = \
-        (vars_dict[key] for key in ['xref_unique_MOCS', 'refStimulus_MOCS',
-                                    'compStimulus_MOCS', 'responses_MOCS',
-                                    'nRefs_MOCS', 'nLevels_MOCS', 'nTrials_MOCS'])
-else:
-    with open(MOCS_full_path, 'rb') as f:
-        vars_dict = pickled.load(f)
-    xref_unique, refStimulus, compStimulus, responses, nRefs, nLevels, nTrials = \
-        (vars_dict[key] for key in ['xref_unique', 'refStimulus', 'compStimulus',
-                                    'responses','nRefs', 'nLevels', 'num_trials'])
+mocs_data = dcfg.load_mocs_data()
+xref_unique = mocs_data['xref_unique']
+refStimulus = mocs_data['refStimulus']
+compStimulus = mocs_data['compStimulus']
+responses = mocs_data['responses']
+nRefs = mocs_data['nRefs']
+nLevels = mocs_data['nLevels']
+nTrials = mocs_data['nTrials']
         
-color_thres_data = vars_dict['color_thres_data']
-
 # %%
 # ==-----------------------------------------------------------
 # SECTION 3: Analyze MOCS trials (fit PMF and bootstrap)
@@ -139,10 +132,10 @@ for n in tqdm(range(nRefs), desc="Bootstrapping Progress"):
     #append origin 
     #we need to add a filler trial so that the PMF can be fixed at 1/3 (chance 
     #performance) when comp = ref
-    xy_coords_n_wOrigin = np.vstack((xy_coords_n, np.array([0,0])))
+    xy_coords_n_wOrigin = np.vstack((xy_coords_n, np.array([0]*dcfg.stim_dims)))
     responses_n_wOrigin = np.append(responses[n], np.array([1/3]))
     # call the class
-    fit_PMF_MOCS_exptN = fit_PMF_MOCS_trials(stim_dims, 
+    fit_PMF_MOCS_exptN = fit_PMF_MOCS_trials(dcfg.stim_dims, 
                                              xy_coords_n_wOrigin, 
                                              responses_n_wOrigin,
                                              nLevels + 1, #+1 because we stick 0 in there
@@ -171,11 +164,14 @@ for n in tqdm(range(nRefs), desc="Bootstrapping Progress"):
 # fitting file    
 with open(Wishart_full_path, 'rb') as f: 
     data_load = pickled.load(f)
-expt_trial = data_load['expt_trial']
 
 #gt_Wishart = data_load['gt_Wishart']
-model_pred_Wishart = deepcopy(data_load['model_pred_Wishart'])
-model = deepcopy(model_pred_Wishart.model)
+try:
+    model_pred_Wishart = deepcopy(data_load['model_pred_Wishart'])
+    model = deepcopy(model_pred_Wishart.model)
+except:
+    model_pred_Wishart = deepcopy(data_load['model_pred_Wishart_grid_isoluminant'])
+    model = deepcopy(model_pred_Wishart.model)
 W_est = model_pred_Wishart.W_est
 
 #initialize
@@ -183,8 +179,8 @@ pChoosingX1_Wishart          = np.full((nRefs, fit_PMF_MOCS_exptN.nGridPts), np.
 vecLen_at_targetPC_Wishart   = np.full((nRefs,), np.nan)
 vecLen_at_targetPC_MOCS      = np.full((nRefs,), np.nan)
 vecLen_at_targetPC_MOCS_btst = np.full((nRefs, numBtst), np.nan)
-stim_at_targetPC_MOCS        = np.full((nRefs, stim_dims), np.nan)
-stim_at_targetPC_Wishart     = np.full((nRefs, stim_dims), np.nan)
+stim_at_targetPC_MOCS        = np.full((nRefs, dcfg.stim_dims), np.nan)
+stim_at_targetPC_Wishart     = np.full((nRefs, dcfg.stim_dims), np.nan)
 
 for n in trange(nRefs):
     # Compute the Euclidean distance of each point from the origin
@@ -197,7 +193,7 @@ for n in trange(nRefs):
     # Generate a finely sampled set of stimulus points along the chromatic direction
     finer_stim = sim_MOCS_trials.create_discrete_stim(sorted_array[0], 
                                                       fit_PMF_MOCS[n].nGridPts,
-                                                      ndims= stim_dims
+                                                      ndims= dcfg.stim_dims
                                                       )
 
     # Compute the probability of choosing x1 as the odd stimulus for each stimulus pair
@@ -228,10 +224,11 @@ for n in trange(nRefs):
 # ---------------------------------------------------------------------------
 # Compute the covariance matrices ('Sigmas') at each point in the grid using 
 # the model's compute_U function. 
-Sigmas_est_xref_unique = model.compute_Sigmas(model.compute_U(W_est, xref_unique[None]))
+xref_unique_ext = xref_unique[(None,) * (dcfg.stim_dims - 1)]
+Sigmas_est_xref_unique = model.compute_Sigmas(model.compute_U(W_est, xref_unique_ext))
 
 # Initialize the Wishart model prediction using various parameters.
-model_pred_Wishart_MOCS, _ = rerun_model_pred_wExisting_model(xref_unique[None],
+model_pred_Wishart_MOCS, _ = rerun_model_pred_wExisting_model(xref_unique_ext,
                                                               model_pred_Wishart,
                                                               color_thres_data
                                                               )
@@ -303,7 +300,10 @@ for n in range(nRefs):
         f"Wdim2_{np.round(xref_unique[n][1],2)}.pdf"
         
     #define color map for each reference
-    cmap_n = color_thres_data.W2D_to_rgb(xref_unique[n])
+    if dcfg.stim_dims == 2:
+        cmap_n = color_thres_data.W2D_to_rgb(xref_unique[n])
+    else:
+        cmap_n = color_thres_data.W_unit_to_N_unit(xref_unique[n])
         
     predPMF_settings = replace(predPMF_settings,
                                filler_pts = [0,1/3],
@@ -331,9 +331,12 @@ for n in range(nRefs):
 # NOTE that this is just a quick comparison. So far we have not computed the 
 # error bar for the Wishart threshold predictions. 
 # we will replot this in visualize_btstCI_Wishart_atMOCS.py
-plt_bds = PlotThresCompSettings_bds[f'sub{subN}']['bds']
-corr_txt_loc = PlotThresCompSettings_bds[f'sub{subN}']['corr_text_loc']
-slope_txt_loc = PlotThresCompSettings_bds[f'sub{subN}']['slope_text_loc']
+settings_lookup = PlotThresComp3DSettings_bds if dcfg.stim_dims == 3 else PlotThresCompSettings_bds
+settings_bds = settings_lookup[f"sub{subN if dcfg.flag_load_datafile else None}"]
+plt_bds = settings_bds["bds"]
+corr_txt_loc = settings_bds["corr_text_loc"]
+slope_txt_loc = settings_bds["slope_text_loc"]
+
 predComp_settings = replace(PlotThresCompSettings(), **pltSettings_base.__dict__)
 predComp_settings = replace(predComp_settings,
                             fontsize = 9.5,
@@ -364,18 +367,18 @@ try:
 except:
     str_ext = ''
 str_end = re.search(r'(decayRate.*)\.pkl', file_name).group(1)
-output_file = f'Fitted_weibull_psychometric_func_Isoluminant plane_{nTrials}totalTrials'+\
+str_stim = 'RGB cube' if dcfg.plane_2D is None else dcfg.plane_2D
+output_file = f'Fitted_weibull_psychometric_func_{str_stim}_{nTrials}totalTrials'+\
     f'_{nRefs}refs_MOCS_sub{subN}{str_ext}_{str_end}.pkl'
 full_path = os.path.join(fits_path, output_file)
 
-variable_names = ['stim_dims','psyfield_dims', 'subN', 'color_thres_data',
-                  'xref_unique','refStimulus','compStimulus','responses', 
-                  'nRefs', 'nLevels', 'nTrials', 'numBtst', 'fit_PMF_MOCS', 
-                  'model_pred_Wishart', 'pChoosingX1_Wishart',
-                  'vecLen_at_targetPC_Wishart', 'vecLen_at_targetPC_MOCS', 
-                  'vecLen_at_targetPC_MOCS_btst', 'stim_at_targetPC_MOCS',
-                  'stim_at_targetPC_Wishart', 'Sigmas_est_xref_unique',
-                  'model_pred_Wishart_MOCS']
+variable_names = ['subN','dcfg', 'color_thres_data', 'xref_unique','refStimulus',
+                  'compStimulus','responses', 'nRefs', 'nLevels', 'nTrials',
+                  'numBtst', 'fit_PMF_MOCS', 'model_pred_Wishart', 
+                  'pChoosingX1_Wishart', 'vecLen_at_targetPC_Wishart', 
+                  'vecLen_at_targetPC_MOCS', 'vecLen_at_targetPC_MOCS_btst',
+                  'stim_at_targetPC_MOCS', 'stim_at_targetPC_Wishart',
+                  'Sigmas_est_xref_unique', 'model_pred_Wishart_MOCS']
 vars_dict = {}
 
 for var_name in variable_names:
@@ -390,5 +393,3 @@ for var_name in variable_names:
 # Write the list of dictionaries to a file using pickle
 with open(full_path, 'wb') as f:
     pickled.dump(vars_dict, f)
-
-

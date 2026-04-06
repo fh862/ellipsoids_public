@@ -497,6 +497,127 @@ class color_thresholds():
         # Always clip (either tiny numerical drift or true out-of-gamut)    
         return np.clip(rgb, 0.0, 1.0)
     
+    def W3D_to_cc(self, W3D, ambient_lms, bg_lms):
+        """
+        Convert 3D model-space coordinates to cone-contrast coordinates.
+
+        Parameters
+        ----------
+        W3D : array-like, shape (3,) or (N, 3)
+            Input point(s) in 3D W-space.
+        ambient_lms : array-like, shape (3,) or (N, 3)
+            Ambient LMS offset. A single `(3,)` vector is broadcast to all
+            input points; an `(N, 3)` array specifies a different ambient LMS
+            for each input point.
+        bg_lms : array-like, shape (3,) or (N, 3)
+            Background LMS used to compute cone contrast. A single `(3,)`
+            vector is broadcast to all input points; an `(N, 3)` array
+            specifies a different background LMS for each input point.
+
+        Returns
+        -------
+        cc : np.ndarray
+            Cone-contrast coordinates with the same shape as `W3D`:
+            `(3,)` for a single point or `(N, 3)` for a batch.
+        """
+        W3D = np.asarray(W3D, dtype=float)
+        was_1d = W3D.ndim == 1
+
+        if was_1d:
+            if W3D.shape[0] != 3:
+                raise ValueError("W3D must have shape (3,) or (N, 3).")
+            W3D_eval = W3D[None, :]
+        elif W3D.ndim == 2 and W3D.shape[1] == 3:
+            W3D_eval = W3D
+        else:
+            raise ValueError("W3D must have shape (3,) or (N, 3).")
+
+        ambient_lms = np.asarray(ambient_lms, dtype=float)
+        bg_lms = np.asarray(bg_lms, dtype=float)
+
+        if ambient_lms.shape == (3,):
+            ambient_lms_eval = np.broadcast_to(ambient_lms, W3D_eval.shape)
+        elif ambient_lms.shape == W3D_eval.shape:
+            ambient_lms_eval = ambient_lms
+        else:
+            raise ValueError("ambient_lms must have shape (3,) or match W3D.")
+
+        if bg_lms.shape == (3,):
+            bg_lms_eval = np.broadcast_to(bg_lms, W3D_eval.shape)
+        elif bg_lms.shape == W3D_eval.shape:
+            bg_lms_eval = bg_lms
+        else:
+            raise ValueError("bg_lms must have shape (3,) or match W3D.")
+
+        # Map model-space coordinates from [-1, 1] to normalized RGB [0, 1],
+        # then convert RGB to LMS and finally express the result as cone contrast.
+        rgb = self.W_unit_to_N_unit(W3D_eval)
+        lms = (self.M_RGBToLMS @ rgb.T).T + ambient_lms_eval
+        cc = (lms - bg_lms_eval) / bg_lms_eval
+
+        return cc[0] if was_1d else cc
+    
+    def cc_to_W3D(self, cc, ambient_lms, bg_lms):
+        """
+        Convert cone-contrast coordinates to 3D model-space coordinates.
+
+        Parameters
+        ----------
+        cc : array-like, shape (3,) or (N, 3)
+            Input point(s) in cone-contrast space.
+        ambient_lms : array-like, shape (3,) or (N, 3)
+            Ambient LMS offset. A single `(3,)` vector is broadcast to all
+            input points; an `(N, 3)` array specifies a different ambient LMS
+            for each input point.
+        bg_lms : array-like, shape (3,) or (N, 3)
+            Background LMS used to define cone contrast. A single `(3,)`
+            vector is broadcast to all input points; an `(N, 3)` array
+            specifies a different background LMS for each input point.
+
+        Returns
+        -------
+        W3D : np.ndarray
+            Model-space coordinates with the same shape as `cc`:
+            `(3,)` for a single point or `(N, 3)` for a batch.
+        """
+        cc = np.asarray(cc, dtype=float)
+        was_1d = cc.ndim == 1
+
+        if was_1d:
+            if cc.shape[0] != 3:
+                raise ValueError("cc must have shape (3,) or (N, 3).")
+            cc_eval = cc[None, :]
+        elif cc.ndim == 2 and cc.shape[1] == 3:
+            cc_eval = cc
+        else:
+            raise ValueError("cc must have shape (3,) or (N, 3).")
+
+        ambient_lms = np.asarray(ambient_lms, dtype=float)
+        bg_lms = np.asarray(bg_lms, dtype=float)
+
+        if ambient_lms.shape == (3,):
+            ambient_lms_eval = np.broadcast_to(ambient_lms, cc_eval.shape)
+        elif ambient_lms.shape == cc_eval.shape:
+            ambient_lms_eval = ambient_lms
+        else:
+            raise ValueError("ambient_lms must have shape (3,) or match cc.")
+
+        if bg_lms.shape == (3,):
+            bg_lms_eval = np.broadcast_to(bg_lms, cc_eval.shape)
+        elif bg_lms.shape == cc_eval.shape:
+            bg_lms_eval = bg_lms
+        else:
+            raise ValueError("bg_lms must have shape (3,) or match cc.")
+
+        # Convert cone contrast back to LMS, remove the ambient offset after
+        # mapping through RGB space, and finally map normalized RGB [0, 1]
+        # back to model-space coordinates in [-1, 1].
+        lms = cc_eval * bg_lms_eval + bg_lms_eval
+        rgb = (self.M_LMSToRGB @ (lms - ambient_lms_eval).T).T
+        W3D = self.N_unit_to_W_unit(rgb)
+
+        return W3D[0] if was_1d else W3D
+    
     #%% other useful methods                
     @staticmethod
     def N_unit_to_W_unit(N_unit):

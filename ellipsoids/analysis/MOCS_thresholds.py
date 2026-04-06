@@ -991,39 +991,6 @@ class sim_MOCS_trials:
             else:
                 discrete_stim = np.hstack((discrete_stim, discrete_dim_n[:,None]))
         return discrete_stim
-    
-    @staticmethod
-    def generate_stacked_grids(bds, num_grid_pts, ndims = 2):
-        """
-        Generate and stack multiple grids based on given boundaries, number of grid points, and dimensionality.
-    
-        Args:
-            bds (array-like): List or array of boundary values for each grid.
-            num_grid_pts (array-like): List or array specifying the number of points per dimension.
-            ndims (int): Number of dimensions for the grid.
-    
-        Returns:
-            numpy.ndarray: Stacked grids, with shape (total_points, dim).
-        """
-        # Ensure inputs are numpy arrays
-        bds = np.array(bds)
-        num_grid_pts = np.array(num_grid_pts)
-        
-        # Check if bds and num_grid_pts have the same shape
-        if bds.shape != num_grid_pts.shape:
-            raise ValueError("bds and num_grid_pts must have the same shape.")
-    
-        stacked_grids = []
-    
-        # Generate grids for each boundary and corresponding number of points
-        for bd, num_pts in zip(bds, num_grid_pts):
-            # Generate a list of linspace arrays for each dimension
-            linspaces = [np.linspace(-bd, bd, num_pts) for _ in range(ndims)]
-            grid = np.stack(np.meshgrid(*linspaces, indexing='ij'), axis=-1)  # 'ij' ensures correct order in any dim
-            stacked_grids.append(grid.reshape(-1, ndims))  # Flatten the grid
-        
-        # Stack all grids together
-        return np.vstack(stacked_grids)
         
     @staticmethod
     def sample_sobol(N, lb, ub, force_center=False, seed=None):

@@ -10,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Union
-import os
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 
 #%%
@@ -143,6 +142,16 @@ PlotThresCompSettings_bds = {
         'slope_text_loc': [0.02, 0.14],
         'numOverlaps_text_loc': [0.02, 0.13]
     }
+}
+
+# dictionary mapping subject IDs to their specific settings
+PlotThresComp3DSettings_bds = {
+    'sub1': {
+        'bds': np.array([0, 0.17]),
+        'corr_text_loc': [0.015, 0.16],
+        'slope_text_loc': [0.015, 0.15],
+        'numOverlaps_text_loc':[0.015,0.14]
+    },
 }
     
 #%%

@@ -26,6 +26,7 @@ Notes on implementation:
   for typical use cases.
 
 See also:
+- eval_NBS_org_btst.py (this needs to be run before plotting 95% bootstrapped CI)
 - visualize_bootstrap_CI_atMOCS.py
 
 """
@@ -41,13 +42,17 @@ import matplotlib.pyplot as plt
 from dataclasses import replace
 from copy import deepcopy
 import os
-from analysis.utils_load import select_file_and_get_path
+from analysis.utils_load import select_file_and_get_path, extract_sub_number
+from analysis.color_thres import color_thresholds
 from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
     add_CI_ellipses, Plot2DPredSettings
 from core.model_predictions import rerun_model_pred_wExisting_model
 from plotting.wishart_plotting import PlotSettingsBase 
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI
+from dconfig.config_4Ddata import DatasetConfig_4D
+
+base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
 #%%
 #---------------------------------------------------------------------------
@@ -77,14 +82,24 @@ full_path = os.path.join(input_fileDir_fits, file_name)
 with open(full_path, 'rb') as f:
     vars_dict = pickled.load(f)
 
-# - Transformation matrices for converting between DKL, RGB, and W spaces
-color_thres_data = vars_dict['color_thres_data']
-
-# - Dimensionality of the color space (e.g., 2D for isoluminant planes)
-ndims = color_thres_data.color_dimension
-
 # - Experimental trial data
 expt_trial = vars_dict['expt_trial']
+
+#subject number
+subN = extract_sub_number(file_name)
+
+# Infer the matching dataset configuration from the selected path + file name.
+dcfg = DatasetConfig_4D.infer_from_selection(
+    base_dir,
+    subN,
+    input_fileDir_fits,
+    file_name,
+)
+dcfg.print_summary()
+
+# color thres
+color_thres_data = color_thresholds(2, base_dir, plane_2D = dcfg.plane_2D)
+color_thres_data.load_transformation_matrix(file_date = dcfg.file_date)
 
 #%%
 """
@@ -339,7 +354,7 @@ else:
 #---------------------------------------------------------------------------
 # SECTION 5: visualize the model predictions with confidence intervals
 # --------------------------------------------------------------------------
-output_figDir_fits = os.path.join(os.path.dirname(input_fileDir_fits.replace('DataFiles', 'FigFiles')), 'AEPsych_btst')
+output_figDir_fits = os.path.join(input_fileDir_fits.replace('DataFiles', 'FigFiles'))
 if flag_load_other_subjects:
     output_figDir_fits = re.sub(r'sub\d+', 'groupData', output_figDir_fits)
     fig_name = re.sub(r'sub\d+', 'groupData', file_name[:-4])
@@ -375,7 +390,7 @@ wishart_pred_vis_wCI = WishartPredictionsVisualization(expt_trial,
                                                        model_pred, 
                                                        color_thres_data,
                                                        settings = pltSettings_base,
-                                                       save_fig = False)
+                                                       save_fig = True)
 # Create figure and axes for plotting
 fig, ax = plt.subplots(1, 1, figsize=pred2D_settings.fig_size, dpi=pred2D_settings.dpi)
 
@@ -387,11 +402,11 @@ for idx in np.ndindex(grid.shape[:-1]):
         else: lbl = f'95% bootstrap CI ({nDatasets} datasets)' 
     else:
         lbl = None
-    #adapting_bg_2DW = np.array([-0.218, 0.5461, 0.9652])  #np.array([-0.0021, 0.0023, 0.9652]) np.array([-0.218, 0.5461, 0.9652])
-    #adapting_bg_rgb = color_thres_data.M_2DWToRGB @ adapting_bg_2DW
-    #ax.scatter(*adapting_bg_2DW[:2], marker = '*', color = adapting_bg_rgb, 
-    #           edgecolor = 'k',lw = 0.2, s = 30,
-    #           label = 'Adapting background' if idx == (0,0) else None)
+    if hasattr(dcfg, 'bg_rgb'):
+        bg_2DW = color_thres_data.M_RGBTo2DW @ dcfg.bg_rgb
+        ax.scatter(*bg_2DW[:2], marker = '*', color = dcfg.bg_rgb, 
+                  edgecolor = 'k',lw = 0.2, s = 50,
+                  label = 'Adapting background' if idx == (0,0) else None)
     add_CI_ellipses(fitEll_min[*idx], fitEll_max[*idx],
                     ax=ax, cm=cm, label=lbl, lw_outer = 0,
                     alpha = 0.5)

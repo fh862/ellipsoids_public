@@ -854,19 +854,30 @@ class fit_PMF_MOCS_trials():
         self.fine_pC_95btstCI = arr_sorted[[idx_lb, idx_ub]]
 
 #%%
-def compute_Wishart_based_pCorrect_atMOCS(numBtst, nLevels, fit_PMF_MOCS, 
+def compute_Wishart_based_pCorrect_atMOCS(nLevels, fit_PMF_MOCS, 
                                           xref_unique, model_pred,
-                                          color_thres_data, ndims = 2):
+                                          ndims = 2):
     """
-    Computes Wishart model-based predictions of proportion correct along MOCS directions,
-    and extracts threshold estimates and corresponding stimulus locations.
-    
-    Note: This method was developed for the 4D oddity task, where the distance
-        metric between reference and comparison stimuli was assumed to be Euclidean.
-        It has not yet been updated to support the 'Mahalanobis' option.
+    Compute model-predicted percent-correct curves along each MOCS direction
+    and extract the corresponding threshold distance and stimulus coordinates.
+
+    This helper is dimension-agnostic and can be used for 2D or 3D MOCS
+    stimulus sets, provided that each MOCS condition consists of one reference
+    location plus comparison stimuli sampled along a single direction at
+    multiple levels.
+
+    Threshold distance is interpreted in Euclidean stimulus space. This helper
+    does not currently implement alternative distance metrics such as a
+    Mahalanobis-based threshold readout.
 
     Returns:
-        Dictionary with variable names as keys and corresponding arrays/lists as values.
+        dict:
+            - ``pChoosingX1_Wishart``: model-predicted psychometric curves
+              evaluated on a dense stimulus line for each reference condition.
+            - ``vecLen_at_targetPC_Wishart``: threshold distance at the target
+              performance level for each reference condition.
+            - ``stim_at_targetPC_Wishart``: stimulus coordinates at that
+              threshold in ``ndims``.
 
     """
     
@@ -877,27 +888,32 @@ def compute_Wishart_based_pCorrect_atMOCS(numBtst, nLevels, fit_PMF_MOCS,
     stim_at_targetPC_Wishart     = np.full((nRefs, ndims), np.nan)
 
     for n in trange(nRefs):
-        # Sort stimulus vectors by descending distance from the origin
+        # Sort the tested comparison vectors by distance from the origin so we
+        # can recover the outermost MOCS direction for this condition.
         sorted_indices = np.argsort(-np.linalg.norm(fit_PMF_MOCS[n].unique_stim, axis=1))
         sorted_array = fit_PMF_MOCS[n].unique_stim[sorted_indices]
 
-        # Generate a finer grid of stimuli along the most distant chromatic direction
+        # Build a dense stimulus line along that same direction so the model can
+        # be evaluated more finely than at the original discrete MOCS levels.
         finer_stim = sim_MOCS_trials.create_discrete_stim(
             sorted_array[0], 
             fit_PMF_MOCS[n].nGridPts,
             ndims= ndims
         )
 
-        # Predict proportion correct (pChoosingX1) using the Wishart model
+        # Evaluate model-predicted proportion correct for stimuli centered on
+        # the current MOCS reference.
         pChoosingX1_Wishart[n] = model_pred._compute_pChoosingX1(
             np.full(finer_stim.shape, 0) + xref_unique[n], 
             finer_stim + xref_unique[n]
         )
 
-        # Find the vector length corresponding to target performance (e.g., 66.7%) from Wishart predictions
+        # Read out the threshold distance corresponding to the target
+        # performance level from the predicted psychometric curve.
         vecLen_at_targetPC_Wishart[n] = fit_PMF_MOCS[n]._find_stim_at_targetPC(pChoosingX1_Wishart[n])
 
-        # Compute stimulus coordinates at Wishart threshold
+        # Convert the scalar threshold distance back into stimulus coordinates
+        # by projecting along the canonical MOCS direction for this condition.
         stim_at_targetPC_Wishart[n] = vecLen_at_targetPC_Wishart[n] * (
             fit_PMF_MOCS[n].unique_stim[nLevels // 2] /
             np.linalg.norm(fit_PMF_MOCS[n].unique_stim[nLevels // 2])

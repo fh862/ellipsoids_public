@@ -10,12 +10,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
-import sys
 import os
-script_dir = os.getcwd()
-parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
 from core import oddity_task, chebyshev
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, ellParams_to_covMat,\
     covMat3D_to_2DsurfaceSlice, UnitCircleGenerate, ellParamsQ_to_covMat
@@ -59,10 +54,10 @@ class wishart_model_pred():
             'bds_bruteforce': [0.001, 0.25], # Bounds for vector length search
             'flag_force_centered_ref': True  #force the center to be at the ref when fitting ellipses / ellipsoids
             }
-
+    
         # Allow caller to override any of the default parameters
         self.params.update(kwargs)
-
+    
         # Derived quantities based on model and grid
         self._extract_grid_points()
         self._set_chromatic_dir()
@@ -106,11 +101,11 @@ class wishart_model_pred():
     def _set_chromatic_dir(self):
         """
         Precompute unit-length chromatic directions in model space.
-
+    
         For ndims_cov = 2:
             - grid_color has shape (n_theta, 2)
               and samples directions on the unit circle.
-
+    
         For ndims_cov = 3:
             - grid_color has shape (n_phi, n_theta, 3)
               and samples directions on the unit sphere.
@@ -125,7 +120,7 @@ class wishart_model_pred():
                 self.params['n_theta'],
                 self.params['n_phi']
             )
-
+    
         self.params['grid_color'] = grid_color
         
     def _init_list_ellparams(self):
@@ -170,7 +165,7 @@ class wishart_model_pred():
         For ndims_cov = 3 (ellipsoid in 3D subspace):
             - fitEll_scaled[g1, g2, g3, dim, nPhi * nTheta]
                 Dense samples on the fitted ellipsoidal surface.
-
+    
         """
         # Initialize arrays that store the (scaled) contour points
         if self.ndims_cov == 2:
@@ -179,14 +174,14 @@ class wishart_model_pred():
                 self.grid_shape + (self.ndims_cov, self.params['nTheta']),  # dense points on ellipse
                 np.nan,
             )
-
+    
         elif self.ndims_cov == 3:
             # 3D covariance: ellipsoidal contours
             self.fitEll_scaled = np.full(
                 self.grid_shape + (self.ndims_cov, self.params['nPhi'] * self.params['nTheta']),  # dense points on ellipsoid
                 np.nan,
             )
-
+    
         # Initialize array for predicted covariance matrices at each grid point.
         #
         # Examples:
@@ -206,7 +201,7 @@ class wishart_model_pred():
     
         # Unscaled contour points (same shape as fitEll_scaled)
         self.fitEll_unscaled = np.full(self.fitEll_scaled.shape, np.nan)
-
+    
     def _set_up_grid_search(self):
         """
         Sets up a grid for a brute force search over a predefined range of vector lengths. 
@@ -219,7 +214,7 @@ class wishart_model_pred():
         Returns:
             np.ndarray: A 1D array of vector lengths that are linearly spaced between the 
                         lower and upper bounds defined in the class's parameters.
-
+    
         """
         # Generate a linearly spaced array of vector lengths within the specified bounds.
         vecLength_grid = np.linspace(*self.params['bds_bruteforce'], 
@@ -307,7 +302,7 @@ class wishart_model_pred():
         
         # Calculate comparison stimuli w values based on reference and direction magnitudes.
         w_comp_rep  = w_ref_rep + vecDir_rep * vecLength_rep 
-
+    
         # If the covariance lives in a lower-dimensional subspace (ndims_cov < ndims),
         # append the remaining (fixed) coordinates so that we can evaluate the full model.
         if self.ndims_cov < self.ndims:
@@ -356,7 +351,7 @@ class wishart_model_pred():
         return fitEll_scaled, fitEll_unscaled, fitEll_params
             
     def _convert_Sig_3DisothresholdContour_oddity(self, w_ref, vecLength_test):
-
+    
         # Number of total simulations
         nRepeats = self.params['n_phi'] * self.params['n_theta'] * self.params['ngrid_bruteforce']
         
@@ -549,14 +544,14 @@ class wishart_model_pred():
         # Initialize model prediction lists for storing the ellipse and the data in the model space.
         self._init_model_pred_list()
         self._init_list_ellparams()
-
+    
         if self.ndims_cov == 2:
             self._convert_Sig_2DisothresholdContour_oddity_batch(w_ref)
         elif self.ndims_cov == 3:
             self._convert_Sig_3DisothresholdContour_oddity_batch(w_ref)
         else:
             print('Currently do not support higher dimensionality of cov matrix.')
-
+    
     #%%
     @staticmethod
     def compute_Mahalanobis_distance_one_pair(xref, x1, Uref, U1):
@@ -632,7 +627,7 @@ class wishart_model_pred():
         - Assumes that all inputs are valid and have consistent dimensions.
         """
         # Vectorized computation of Mahalanobis distances across the batch
-
+    
         self.mahalanobis_distances = jax.vmap(
             self.compute_Mahalanobis_distance_one_pair,
             in_axes=(0, 0, 0, 0)
@@ -677,10 +672,9 @@ def rerun_model_pred_wExisting_model(grid, model_pred, color_thres_data,
                                         ngrid_bruteforce = ngrid_bruteforce,
                                         bds_bruteforce = bds_bruteforce,
                                         simulation_func = model_pred.params['simulation_func'])
-    grid_trans = grid if model.num_dims == 2 else np.transpose(grid,(1,0,2,3))
-    model_pred_new.convert_Sig_Threshold_oddity_batch(grid_trans)   
+    model_pred_new.convert_Sig_Threshold_oddity_batch(grid)   
     
-    return model_pred_new, grid_trans
+    return model_pred_new
         
 
 

@@ -8,11 +8,11 @@ Created on Sun Mar 22 15:27:16 2026
 
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
-import dill as pickled
 import os
 import re
 import jax.numpy as jnp
 import numpy as np
+from dconfig.mocs_config_mixin import MOCSConfigMixin
 
 @dataclass
 class DatasetConfig_4D:
@@ -286,7 +286,7 @@ class DatasetConfig_4D:
 
 
 @dataclass
-class DatasetConfig_4D_MOCS:
+class DatasetConfig_4D_MOCS(MOCSConfigMixin):
     """
     Configuration helper for analyses that compare MOCS thresholds against
     Wishart-model predictions in the 4D task.
@@ -309,8 +309,10 @@ class DatasetConfig_4D_MOCS:
     file_date: Optional[str]
     wishart_dir: Optional[str] = None
     wishart_file_name: Optional[str] = None
-    mocs_dir: Optional[str] = None
-    mocs_file_name: Optional[str] = None
+    mocs_data_dir: Optional[str] = None
+    mocs_data_file_name: Optional[str] = None
+    mocs_fit_dir: Optional[str] = None
+    mocs_fit_file_name: Optional[str] = None
     coloralg: Optional[str] = None
 
     # Keys used to normalize human vs simulated MOCS pickles.
@@ -349,6 +351,10 @@ class DatasetConfig_4D_MOCS:
             f"Fitted_ColorDiscrimination_4dExpt_{plane_2D}_sub{subN}_"
             f"decayRate{decay_rate}_varScaler{var_scaler}_nBasisDeg5.pkl"
         )
+        mocs_fit_file_name = (
+            f"Fitted_weibull_psychometric_func_{plane_2D}_6000totalTrials_25refs"
+            f"_MOCS_sub{subN}_decayRate{decay_rate}_varScaler{var_scaler}_nBasisDeg5.pkl"
+        )
         return cls(
             base_dir=base_dir,
             subN=subN,
@@ -358,8 +364,10 @@ class DatasetConfig_4D_MOCS:
             file_date="02242025",
             wishart_dir=wishart_dir,
             wishart_file_name=wishart_file_name,
-            mocs_dir=wishart_dir,
-            mocs_file_name=wishart_file_name,
+            mocs_data_dir=wishart_dir,
+            mocs_data_file_name=wishart_file_name,
+            mocs_fit_dir=wishart_dir,
+            mocs_fit_file_name = mocs_fit_file_name,
         )
 
     @classmethod
@@ -372,6 +380,25 @@ class DatasetConfig_4D_MOCS:
         var_scaler: float = 0.0003,
         sobol_seed: int = 2000,
     ):
+        wishart_dir = os.path.join(
+            base_dir, "META_analysis", "ModelFitting_DataFiles", "4dTask", "CIE", f"sub{subN}"
+        )
+        mocs_data_dir = os.path.join(
+            base_dir, "ELPS_analysis", "Simulation_DataFiles", "MOCS", "gt_CIE"
+        )
+        wishart_file_name = (
+            "Fitted_Sim4dTask_colorDiscrimination_EAVC_6000Trials_"
+            f"300_300_300_5100_sub{subN}_gt{coloralg}_"
+            f"decayRate{decay_rate}_varScaler{var_scaler}_nBasisDeg5.pkl"
+        )
+        mocs_data_file_name = (
+            f"Sim2dTask_colorDiscrimination_Isoluminant plane_MOCStrials_"
+            f"25refs_12levels_20trialsPerLevel_sub{coloralg}_Sobol_seed{sobol_seed}.pkl"
+        )
+        mocs_fit_file_name = (
+            f"Fitted_weibull_psychometric_func_Isoluminant plane_240totalTrials_"
+            f"25refs_MOCS_sub{coloralg}_decayRate{decay_rate}_varScaler{var_scaler}_nBasisDeg5.pkl"
+        )
         return cls(
             base_dir=base_dir,
             subN=subN,
@@ -379,68 +406,14 @@ class DatasetConfig_4D_MOCS:
             stim_dims=2,
             plane_2D="Isoluminant plane",
             file_date="02242025",
-            wishart_dir=os.path.join(
-                base_dir, "META_analysis", "ModelFitting_DataFiles", "4dTask", "CIE", f"sub{subN}"
-            ),
-            wishart_file_name=(
-                "Fitted_Sim4dTask_colorDiscrimination_EAVC_6000Trials_"
-                f"300_300_300_5100_sub{subN}_gt{coloralg}_"
-                f"decayRate{decay_rate}_varScaler{var_scaler}_nBasisDeg5.pkl"
-            ),
-            mocs_dir=os.path.join(
-                base_dir, "ELPS_analysis", "Simulation_DataFiles", "MOCS", "gt_CIE"
-            ),
-            mocs_file_name=(
-                f"Sim2dTask_colorDiscrimination_Isoluminant plane_MOCStrials_"
-                f"25refs_12levels_20trialsPerLevel_sub{coloralg}_Sobol_seed{sobol_seed}.pkl"
-            ),
+            wishart_dir=wishart_dir,
+            wishart_file_name=wishart_file_name,
+            mocs_data_dir=mocs_data_dir,
+            mocs_data_file_name=mocs_data_file_name,
+            mocs_fit_dir=mocs_data_dir,
+            mocs_fit_file_name=mocs_fit_file_name,
             coloralg=coloralg,
         )
-
-    @property
-    def wishart_full_path(self):
-        if self.wishart_dir is None or self.wishart_file_name is None:
-            return None
-        return os.path.join(self.wishart_dir, self.wishart_file_name)
-
-    @property
-    def mocs_full_path(self):
-        if self.mocs_dir is None or self.mocs_file_name is None:
-            return None
-        return os.path.join(self.mocs_dir, self.mocs_file_name)
-
-    def extract_mocs_fields(self, vars_dict):
-        """
-        Return a normalized dictionary of MOCS arrays / counts regardless of
-        whether the source pickle came from a human or simulated dataset.
-        """
-        return {
-            key: vars_dict[src_key]
-            for key, src_key in self.mocs_key_map.items()
-        }
-
-    @property
-    def mocs_source_full_path(self):
-        """
-        Path to the pickle that stores the MOCS fields for this configuration.
-
-        For human data, the MOCS summaries are stored inside the fitted Wishart
-        pickle. For simulated data, they live in a separate MOCS pickle.
-        """
-        return self.wishart_full_path if self.flag_load_datafile else self.mocs_full_path
-
-    def load_mocs_data(self):
-        """
-        Load and normalize MOCS fields from the appropriate pickle source.
-        """
-        source_path = self.mocs_source_full_path
-        if source_path is None:
-            raise ValueError("This config does not define a valid MOCS source path.")
-
-        with open(source_path, "rb") as f:
-            vars_dict = pickled.load(f)
-
-        return self.extract_mocs_fields(vars_dict)
 
     def print_summary(self):
         print("---- 4D MOCS Config ----")
@@ -450,6 +423,8 @@ class DatasetConfig_4D_MOCS:
         print(f"file_date          : {self.file_date}")
         print(f"wishart_dir        : {self.wishart_dir}")
         print(f"wishart_file_name  : {self.wishart_file_name}")
-        print(f"mocs_dir           : {self.mocs_dir}")
-        print(f"mocs_file_name     : {self.mocs_file_name}")
+        print(f"mocs_data_dir      : {self.mocs_data_dir}")
+        print(f"mocs_data_file_name: {self.mocs_data_file_name}")
+        print(f"mocs_fit_dir       : {self.mocs_fit_dir}")
+        print(f"mocs_fit_file_name : {self.mocs_fit_file_name}")
         print("------------------------")

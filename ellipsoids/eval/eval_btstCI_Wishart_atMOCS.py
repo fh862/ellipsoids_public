@@ -57,9 +57,10 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 from tqdm import trange
 from dataclasses import replace
-import re
 import os
 from analysis.MOCS_thresholds import compute_Wishart_based_pCorrect_atMOCS
+from dconfig.config_4Ddata import DatasetConfig_4D_MOCS
+from dconfig.config_6Ddata import DatasetConfig_6D
 from core.model_predictions import rerun_model_pred_wExisting_model
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     intervals_overlap, find_btst_dataset_within_CI
@@ -85,26 +86,19 @@ base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
 #OR
 #'ELPS_analysis/Simulation_DataFiles/MOCS/gt_CIE'
 #'Fitted_weibull_psychometric_func_Isoluminant plane_240totalTrials_25refs_MOCS_subCIE1994.pkl'
-flag_load_data = False
+
 subN = 1
+decay_rate = 0.4
+# choose one dataset
+#dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN, decay_rate = decay_rate)
+#dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
+dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
 
-if flag_load_data:
-    input_fileDir_fits_MOCS = os.path.join(base_dir, 'ELPS_analysis', 
-                                           'Experiment_DataFiles',
-                                           'pilot2', f'sub{subN}', 'fits')
-    file_name_MOCS = 'Fitted_weibull_psychometric_func_Isoluminant plane_'+\
-        f'6000totalTrials_25refs_MOCS_sub{subN}_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
-else:
-    input_fileDir_fits_MOCS = os.path.join(base_dir, 'ELPS_analysis', 
-                                           'Simulation_DataFiles', 'MOCS', 'gt_CIE')
-    file_name_MOCS = 'Fitted_weibull_psychometric_func_Isoluminant plane_'+\
-        '240totalTrials_25refs_MOCS_subCIE1994_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
-
-# Construct the full path to the selected file
-full_path_MOCS = os.path.join(input_fileDir_fits_MOCS, file_name_MOCS)
+#print out summary
+dcfg.print_summary()
 
 # Load the necessary variables from the file
-with open(full_path_MOCS, 'rb') as f:
+with open(dcfg.mocs_fit_full_path, 'rb') as f:
     MOCS = pickled.load(f)
     
 #%% 
@@ -118,46 +112,31 @@ with open(full_path_MOCS, 'rb') as f:
 #'META_analysis/ModelFitting_DataFiles/4dTask/CIE/sub1/decayRate0.5'
 #'Fitted_byWishart_Isoluminant plane_4DExpt_300_300_300_5100_AEPsychSampling_EAVC_decayRate0.5_nBasisDeg5_sub1.pkl'
 
-if flag_load_data:
-    input_fileDir_fits = os.path.join(base_dir, 'ELPS_analysis',
-                                      'Experiment_DataFiles',
-                                      'pilot2', f'sub{subN}', 'fits')
-    file_name = 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_'+\
-        f'sub{subN}_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
-else:
-    input_fileDir_fits = os.path.join(base_dir, 'META_analysis', 
-                                      'ModelFitting_DataFiles', '4dTask', 
-                                      'CIE', f'sub{subN}')
-    file_name = 'Fitted_Sim4dTask_colorDiscrimination_EAVC_6000Trials_'+\
-        f'300_300_300_5100_sub{subN}_gtCIE1994_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
-decay_rate = float(re.search(r'decayRate([0-9.]+)', file_name).group(1))
-
-# Construct the full path to the selected file
-full_path = os.path.join(input_fileDir_fits, file_name)
-
 # Load the necessary variables from the file
-with open(full_path, 'rb') as f:
+with open(dcfg.wishart_full_path, 'rb') as f:
     vars_dict = pickled.load(f)
 
 # - Transformation matrices for converting between DKL, RGB, and W spaces
 color_thres_data = vars_dict['color_thres_data']
-# - Experimental trial data
-expt_trial = vars_dict['expt_trial']
-
 key_gridMOCS = 'model_pred_Wishart_MOCS'
-flag_append_data = True
+flag_append_data = False
 
 if key_gridMOCS in vars_dict:
     model_pred_Wishart_MOCS = vars_dict[key_gridMOCS]
 else:
     # Retrieve the variables of interest from the loaded dictionary
     # - Model predictions using the Wishart process
-    model_pred_existing = deepcopy(vars_dict['model_pred_Wishart'])
+    if dcfg.stim_dims == 2:
+        model_pred_existing = deepcopy(vars_dict['model_pred_Wishart'])
+    else:
+        model_pred_existing = deepcopy(vars_dict['model_pred_Wishart_grid_isoluminant'])
     grid_MOCS = MOCS['xref_unique']
 
     # Use the helper function to recompute model predictions and transformed grid
-    model_pred_Wishart_MOCS, _ = rerun_model_pred_wExisting_model(
-            grid_MOCS[None], model_pred_existing, color_thres_data
+    model_pred_Wishart_MOCS = rerun_model_pred_wExisting_model(
+            grid_MOCS[(None,) * (dcfg.stim_dims - 1)],
+            model_pred_existing, 
+            color_thres_data
             )
     # Optionally append results to the pickle
     if flag_append_data:
@@ -165,7 +144,7 @@ else:
         vars_dict['grid_MOCS'] = grid_MOCS
 
         # Save the updated pickle file
-        with open(full_path, 'wb') as f:
+        with open(dcfg.wishart_full_path, 'wb') as f:
             pickled.dump(vars_dict, f)
 
 #%% 
@@ -180,11 +159,11 @@ else:
 #'META_analysis/ModelFitting_DataFiles/4dTask/CIE/sub1/decayRate0.4'
 #'Fitted_byWishart_Isoluminant plane_4DExpt_300_300_300_5100_AEPsychSampling_EAVC_decayRate0.4_nBasisDeg5_sub1_btst_AEPsych[0].pkl'
 
-input_fileDir_fits_btst = os.path.join(input_fileDir_fits, 
+input_fileDir_fits_btst = os.path.join(dcfg.wishart_dir, 
                                        'AEPsych_btst',
                                        f'decayRate{decay_rate}'
                                        )
-file_name_btst = f"{file_name[:-4]}_btst_AEPsych[0].pkl"
+file_name_btst = f"{dcfg.wishart_file_name[:-4]}_btst_AEPsych[0].pkl"
 
 # number of bootstrapped datasets: AEPsych[0] ... AEPsych[119]
 nBtst = 120  
@@ -192,7 +171,10 @@ nBtst = 120
 # Storage
 # params_all: ellipse parameters at each MOCS reference, for each bootstrap
 #   params = [x_center, y_center, major_axis, minor_axis, rotation_deg]
-params_all = np.full((MOCS["nRefs"], nBtst, 5), np.nan)
+if dcfg.stim_dims == 2:
+    params_all = np.full((MOCS["nRefs"], nBtst, 5), np.nan)
+else:
+    params_all = [[] for _ in range(nBtst)]
 
 # pChoosingX1_Wishart_list: one entry per bootstrap (each entry is typically length nRefs)
 # stores WPPM-predicted p(correct) evaluated at MOCS validation conditions
@@ -222,13 +204,18 @@ for r in trange(nBtst, desc="Loading bootstraps"):
 
     else:
         # Otherwise, recompute Wishart predictions at the MOCS validation references
-        model_pred_r = vars_dict_btst["model_pred_Wishart"]
+        if dcfg.stim_dims == 2:
+            model_pred_r = deepcopy(vars_dict['model_pred_Wishart'])
+        else:
+            model_pred_r = deepcopy(vars_dict['model_pred_Wishart_grid_isoluminant'])
         grid_MOCS_r = MOCS["xref_unique"]  # unique MOCS reference locations
 
         # Re-run prediction using the existing fitted model, evaluated at MOCS grid
         # (also returns transformed grid in other spaces if needed; ignored here)
-        model_pred_Wishart_MOCS_r, _ = rerun_model_pred_wExisting_model(
-            grid_MOCS_r[None], model_pred_r, color_thres_data
+        model_pred_Wishart_MOCS_r = rerun_model_pred_wExisting_model(
+            grid_MOCS_r[(None,) * (dcfg.stim_dims - 1)], 
+            model_pred_r, 
+            color_thres_data
         )
 
         # Monte Carlo simulation: generate WPPM-predicted psychometric curves at MOCS conditions
@@ -236,12 +223,11 @@ for r in trange(nBtst, desc="Loading bootstraps"):
         #                 (2) `vecLen_at_targetPC_Wishart`
         #                 (3) `stim_at_targetPC_Wishart`
         thres_Wishart_based_atMOCS_r = compute_Wishart_based_pCorrect_atMOCS(
-            nBtst,
             MOCS["nLevels"],
             MOCS["fit_PMF_MOCS"],
             MOCS["xref_unique"],
             deepcopy(model_pred_Wishart_MOCS_r),
-            color_thres_data,
+            ndims = dcfg.stim_dims
         )
 
         # Optionally cache computed results back into this bootstrap pickle (speeds up reruns)
@@ -263,8 +249,11 @@ for r in trange(nBtst, desc="Loading bootstraps"):
     NBS_sum[r] = np.sum(vars_dict_btst["NBS_fine_grid"])
 
     # Extract ellipse parameters at each MOCS reference for this bootstrap
-    for j in range(MOCS["nRefs"]):
-        params_all[j, r] = model_pred_Wishart_MOCS_r.params_ell[0][j]
+    if dcfg.stim_dims == 2:
+        for j in range(MOCS["nRefs"]):
+            params_all[j, r] = model_pred_Wishart_MOCS_r.params_ell[0][j]
+    else:
+        params_all[r] = model_pred_Wishart_MOCS_r.params_ell[0][0]
 
 #%%           
 if not flag_running_on_hpc:
@@ -384,12 +373,13 @@ if not flag_running_on_hpc:
             MOCS[key_matched_btst_analysis] = slope_corr_analysis_matched_btst
     
             # Save updated MOCS dictionary back to file
-            with open(full_path_MOCS, 'wb') as f:
+            with open(dcfg.mocs_fit_full_path, 'wb') as f:
                 pickled.dump(MOCS, f)
 
 #%%
 if not flag_running_on_hpc:
     # Set up output directory for saving figures
+    input_fileDir_fits = deepcopy(dcfg.mocs_fit_dir)
     output_figDir_fits = os.path.join(input_fileDir_fits.replace('ModelFitting_DataFiles', 
                                                                  'ModelFitting_FigFiles'),
                                       'comp_validation')
@@ -413,7 +403,7 @@ if not flag_running_on_hpc:
                               )
     
     # Initialize visualization object for the Wishart model predictions
-    wishart_pred_vis_MOCS = WishartPredictionsVisualization(expt_trial,
+    wishart_pred_vis_MOCS = WishartPredictionsVisualization(None,
                                                             model_pred_Wishart_MOCS.model,
                                                             model_pred_Wishart_MOCS,
                                                             color_thres_data,
@@ -482,8 +472,8 @@ if not flag_running_on_hpc:
     ax.legend(loc='lower center',bbox_to_anchor=(0.5, -0.45),
               fontsize = pred2D_settings.fontsize-1)
     # Save figure
-    fig_name = f"{file_name[:-4]}_comparison_btw_MOCS_WishartPredictions_wBtstCI.pdf"
-    fig.savefig(os.path.join(output_figDir_fits, fig_name), bbox_inches='tight')
+    fig_name = f"{dcfg.wishart_file_name[:-4]}_comparison_btw_MOCS_WishartPredictions_wBtstCI.pdf"
+    #fig.savefig(os.path.join(output_figDir_fits, fig_name), bbox_inches='tight')
     plt.show()
     
     #%%
@@ -504,7 +494,7 @@ if not flag_running_on_hpc:
     #initialize color map
     cmap_allref = []
     for n in range(MOCS['nRefs']):
-        fig_name_part1 = file_name[:-4]
+        fig_name_part1 = dcfg.wishart_file_name[:-4]
         fig_name_n = f"{fig_name_part1}Ref{n}_Wdim1_{np.round(MOCS['xref_unique'][n][0],2)}_"+\
             f"Wdim2_{np.round(MOCS['xref_unique'][n][1],2)}.pdf"
             
@@ -513,7 +503,7 @@ if not flag_running_on_hpc:
         #append colormap so we can reuse it for the next plot
         cmap_allref.append(cmap_n)
         
-        predPMF_settings = replace(predPMF_settings, fig_size = (3.3, 6.3),
+        predPMF_settings = replace(predPMF_settings, #fig_size = (3.3, 6.3),
                                    filler_pts = [0,1/3],
                                    cmap_PMF = 'k',
                                    cmap_dots = 'k',
@@ -540,7 +530,7 @@ if not flag_running_on_hpc:
         ax_n.errorbar(MOCS['vecLen_at_targetPC_Wishart'][n], slc_PMF_MOCS.target_pC,
                       xerr=vecLen_at_targetPC_Wishart_err[n][:, None],
                       c=cmap_n, lw= 3, capsize=4)
-        fig_n.savefig(os.path.join(output_figDir_fits, f"{fig_name_n[:-4]}_v2.pdf"), bbox_inches='tight')
+        #fig_n.savefig(os.path.join(output_figDir_fits, f"{fig_name_n[:-4]}_v2.pdf"), bbox_inches='tight')
         plt.show()
     
     #%%
@@ -560,7 +550,7 @@ if not flag_running_on_hpc:
                                        settings = pltSettings_base2,
                                        save_fig= True
                                        )
-    subN = 7
+    
     plt_st_n = plt_st[f'sub{subN}']
     predComp_settings = replace(PlotThresCompSettings(), **pltSettings_base.__dict__)
     predComp_settings = replace(predComp_settings,
@@ -580,11 +570,11 @@ if not flag_running_on_hpc:
                                 )
     # plot the comparison of thresholds between AEPsych predictions and MOCS predictions
     vis_MOCS.plot_comparison_thres(thres_Wishart = MOCS['vecLen_at_targetPC_Wishart'],
-                                   slope_org = MOCS['slope_modelPred_org'].item(),
+                                   slope_org = slope_modelPred_org.item(),
                                    slope_CI= slope_btst_CI,
                                    xref_unique = MOCS['xref_unique'],
                                    thres_Wishart_95btstErr = vecLen_at_targetPC_Wishart_err,
-                                   corr_coef_org = MOCS['corr_coef_modelPred_org'],
+                                   corr_coef_org = corr_coef_modelPred_org,
                                    corr_coef_CI = corr_coef_btst_CI,
                                    num_overlaps=num_overlaps,
                                    settings = predComp_settings

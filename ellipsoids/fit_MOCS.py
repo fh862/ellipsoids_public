@@ -70,9 +70,9 @@ base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 subN = 1
 
 # choose one dataset
-dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
-# dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN)
-# dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
+#dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN)
+#dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
 
 #print out summary
 dcfg.print_summary()
@@ -93,7 +93,7 @@ if dcfg.stim_dims == 2:
 # model.
 fits_path = dcfg.wishart_dir
 file_name = dcfg.wishart_file_name
-MOCS_full_path = dcfg.mocs_full_path
+MOCS_full_path = dcfg.mocs_data_full_path
 Wishart_full_path = dcfg.wishart_full_path
         
 # Output directories for figures and processed data
@@ -204,7 +204,8 @@ for n in trange(nRefs):
     
     #find the vector length that corresponds to 66.7% correct response
     #either based on the Wishart model or Weibull psychometric functions
-    #NOTE: this is not the same as stimulus; we basically subtract the ref location from all the comp locations for this calculation
+    #NOTE: this is not the same as stimulus; we basically subtract the ref location 
+    #from all the comp locations for this calculation
     vecLen_at_targetPC_Wishart[n] = fit_PMF_MOCS[n]._find_stim_at_targetPC(pChoosingX1_Wishart[n]) 
     vecLen_at_targetPC_MOCS_btst[n] = fit_PMF_MOCS[n].stim_at_targetPC_btst
     

@@ -688,13 +688,21 @@ class WishartPredictionsVisualization(PlottingTools):
                 model_pred_cov_2d_slice = np.transpose(temp,(1,0,2,3,4,5))
         
         NUM_GRID_PTS = grid_est.shape[0]
-        for k, fixedRGB_val_scaled_k in zip(list(range(NUM_GRID_PTS)), settings.fixedRGB_val_scaled):
+        # The 3D grids passed here are built with numpy/jax meshgrid's default
+        # indexing="xy". Thus the first two array axes are (G/Y, R/X), while
+        # the coordinate order stored in grid_est[..., :] is still (R, G, B).
+        xy_grid_axis_for_dim = (1, 0, 2)
+        for k in range(NUM_GRID_PTS):
             for _idx, fixedPlane, _idx_varying, varyingPlanes in zip(settings.dim_indices,
                                                                      settings.dim_labels,
                                                                      settings.orthogonal_pairs,
                                                                      settings.plane_labels):
                 fig, axes = plt.subplots(1, 2, dpi =settings.dpi, figsize= settings.fig_size)
                 idx = jnp.array(_idx_varying)
+                fixed_coord_idx = [0, 0, 0]
+                fixed_coord_idx[_idx] = k
+                fixed_grid_idx = tuple(fixed_coord_idx[dim] for dim in xy_grid_axis_for_dim)
+                fixedRGB_val_scaled_k = grid_est[fixed_grid_idx][_idx]
                 
                 #plot model prediction 95% confidence interval
                 if settings.visualize_modelpred_CI:
@@ -705,9 +713,11 @@ class WishartPredictionsVisualization(PlottingTools):
                             
                 for i in range(NUM_GRID_PTS):
                     for j in range(NUM_GRID_PTS):
-                        if _idx == 0:   ii,jj,kk = k,i,j; 
-                        elif _idx == 1: ii,jj,kk = i,k,j; 
-                        elif _idx == 2: ii,jj,kk = i,j,k;                        
+                        coord_idx = [0, 0, 0]
+                        coord_idx[_idx] = k
+                        coord_idx[_idx_varying[0]] = i
+                        coord_idx[_idx_varying[1]] = j
+                        ii, jj, kk = (coord_idx[dim] for dim in xy_grid_axis_for_dim)
                         #lables
                         scatter_label, contour_3D_label, contour_2D_label, fits_label, \
                             pred3D_label, pred2D_label, CI_3D_label, CI_2D_label, fixedRGB_val_temp = \
@@ -746,7 +756,7 @@ class WishartPredictionsVisualization(PlottingTools):
                             
                         #visualize the fits
                         if settings.visualize_model_estimatedCov:
-                            sig_rec = self.model_pred.Sigmas_noise_grid[jj,ii,kk]
+                            sig_rec = self.model_pred.Sigmas_noise_grid[ii,jj,kk]
                             viz.plot_ellipse(axes[0],  grid_est[ii,jj,kk, idx],
                                              sig_rec[idx][:, idx],
                                 color=settings.sigma_lc, lw= settings.sigma_lw, 
@@ -821,8 +831,9 @@ class WishartPredictionsVisualization(PlottingTools):
                 for n in range(2): #2 axes
                     self._update_axes_limits(axes[n])
                     self._update_axes_labels(axes[n], ticks,ticks_show)
+                    fixedRGB_val_title = float(self.color_thres.W_unit_to_N_unit(fixedRGB_val_scaled_k))
                     ttl_part2= f'{varyingPlanes} plane ({fixedPlane} = '+\
-                        f'{self.color_thres.W_unit_to_N_unit(fixedRGB_val_scaled_k)})'
+                        f'{fixedRGB_val_title:.3f})'
                     if n == 0: ttl_part1 = 'Projections onto '
                     else: ttl_part1 = 'Slices by '
                     self._configure_labels_and_title(axes[n], title = ttl_part1 + ttl_part2)

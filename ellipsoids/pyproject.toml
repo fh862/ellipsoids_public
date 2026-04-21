@@ -36,6 +36,7 @@ include = [
     "analysis*",
     "cieLab*",
     "core*",
+    "dconfig*",
     "eval*",
     "export*",
     "model_demo*",

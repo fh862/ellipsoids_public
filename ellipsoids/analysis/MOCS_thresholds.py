@@ -288,6 +288,16 @@ class fit_PMF_MOCS_trials():
             
         # Check if the optimization was successful
         if bestfit_result is not None:
+            # Warn if either fitted parameter lands on or very near its bound,
+            # which usually indicates the fit wants to move outside the allowed
+            # range.
+            tol = 1e-6
+            for param_idx, (param_val, (lb, ub)) in enumerate(zip(bestfit_result.x, self.bounds)):
+                if abs(param_val - lb) < tol or abs(param_val - ub) < tol:
+                    print(
+                        f"Warning: fitted Weibull parameter index {param_idx}="
+                        f"{param_val:.6g} is at or very near its bounds [{lb}, {ub}]."
+                    )
             return bestfit_result
         else:
             # Raise an error if all attempts fail

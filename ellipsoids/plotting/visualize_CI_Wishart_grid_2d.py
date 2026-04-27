@@ -120,7 +120,7 @@ Assumptions:
 
 """
 
-num_grid_pts_desired = 7
+num_grid_pts_desired = dcfg.num_grid_pts2
 flag_append_data = False
 
 # Construct the key name based on the desired grid size
@@ -146,7 +146,7 @@ else:
                                         for _ in range(ndims)]), axis=-1)
     
         # Use the helper function to recompute model predictions and transformed grid
-        model_pred, _ = rerun_model_pred_wExisting_model(
+        model_pred = rerun_model_pred_wExisting_model(
             grid, model_pred, color_thres_data
         )
     
@@ -248,7 +248,7 @@ for r in trange(nDatasets):
             param_ell_r = vars_dict_others['model_pred_Wishart'].params_ell
         else:
             # Recompute predictions on the desired grid
-            model_pred_r, _ = rerun_model_pred_wExisting_model(grid, 
+            model_pred_r = rerun_model_pred_wExisting_model(grid, 
                                                                model_pred_r, 
                                                                color_thres_data)
             param_ell_r = model_pred_r.params_ell
@@ -402,7 +402,7 @@ for idx in np.ndindex(grid.shape[:-1]):
         else: lbl = f'95% bootstrap CI ({nDatasets} datasets)' 
     else:
         lbl = None
-    if hasattr(dcfg, 'bg_rgb'):
+    if dcfg.bg_rgb is not None:
         bg_2DW = color_thres_data.M_RGBTo2DW @ dcfg.bg_rgb
         ax.scatter(*bg_2DW[:2], marker = '*', color = dcfg.bg_rgb, 
                   edgecolor = 'k',lw = 0.2, s = 50,

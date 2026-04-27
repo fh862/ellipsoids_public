@@ -151,7 +151,7 @@ if key_pred not in vars_dict:
     ref_pts_W_trunc_trans = ref_pts_W[:-1].T  # Shape: (nPts_sDKL_circle, 2)
     ref_pts_W_org = ref_pts_W_trunc_trans[np.newaxis]  # Add an extra dimension for batch processing
     
-    model_pred_Wishart_Gegenfurtner, _= rerun_model_pred_wExisting_model(ref_pts_W_org, 
+    model_pred_Wishart_Gegenfurtner = rerun_model_pred_wExisting_model(ref_pts_W_org, 
                                                                          model_pred_Wishart, 
                                                                          color_thres_data
                                                                          )
@@ -288,7 +288,7 @@ for n in range(nBtst):
     # - If missing, rerun prediction using the already-fitted model
     # - Optionally write results back into the pickle for caching
     if key_pred not in vars_dict_btst:
-        model_pred_Wishart_Gegenfurtner_btst_n, _ = rerun_model_pred_wExisting_model(
+        model_pred_Wishart_Gegenfurtner_btst_n = rerun_model_pred_wExisting_model(
             ref_pts_W_org,
             model_pred_Wishart_btst_n,
             color_thres_data
@@ -465,4 +465,3 @@ if not flag_running_on_hpc:
     Gegenfurtner_vis.plot_Gegenfurtner_Wishart_space_zoomed_out(box_ub, plt_st)
     Gegenfurtner_vis.plot_sDKL_zoomed_out(grid_sDKL, fine_ell_sDKL_grid, plt_st)
     
-

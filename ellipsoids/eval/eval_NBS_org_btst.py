@@ -124,9 +124,8 @@ for r in trange(nDatasets):
 
     else:
         # Compute covariance matrices on the same fine grid for bootstrap fit r.
-        model_pred_btst = deepcopy(vars_dict_btst["model_pred_Wishart"])
-        model_btst = model_pred_btst.model
-        W_btst = model_pred_btst.W_est
+        model_btst = vars_dict_btst["model"]
+        W_btst = vars_dict_btst["W_est"]
 
         Sigmas_noise_grid_btst = model_btst.compute_Sigmas(
             model_btst.compute_U(W_btst, grid_fine)

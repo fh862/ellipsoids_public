@@ -78,7 +78,7 @@ stim_dims = 3               # We vary 2 or 3 chromatic dimensions (2D slice)
 rnd_seed = 0                # Random seed for reproducibility
 colordiff_alg = "CIE1994"   # ΔE algorithm: "CIE1976", "CIE1994", "CIE2000"
 nSims = 240                 # per ref
-jitter = 0.01                # Amount of Gaussian jitter added to sampled stimuli (typical range: 0.1–0.5)
+jitter = 0.3                # Amount of Gaussian jitter added to sampled stimuli (typical range: 0.1–0.5)
 
 #number of grid
 num_grid_pts = 5
@@ -231,9 +231,13 @@ else:
                                x1_opacity = 0.8, line_opacity = 0.8
                                ) 
     vis_sample_html = SamplingRefCompPairVisualization_html(settings=pltSettings_html)
-    fig = vis_sample_html.plot_sampling(xref, x1)
     out_html = os.path.join(output_figDir, f"{figname}.html")
-    fig.write_html(out_html, include_plotlyjs=True)
+    vis_sample_html.write_interactive_html(
+        xref,
+        x1,
+        out_html,
+        page_title=figname,
+    )
 
 #%%
 # -----------------------------------------------------------
@@ -303,5 +307,4 @@ for var_name in variable_names:
 # Write the list of dictionaries to a file using pickle
 with open(output_path, 'wb') as f:
     pickled.dump(vars_dict, f)
-
 

@@ -78,7 +78,7 @@ model = WishartProcessModel(
     ndims,     # Number of stimulus dimensions
     1,     # Number of extra inner dimensions in `U`.
     3e-4,  # Scale parameter for prior on `W`.
-    0.3,   # decay rate on `W` 
+    0.8,   # decay rate on `W` 
     0,     # Diagonal term setting minimum variance for the ellipsoids.
     num_dims_cov= ndims
 )
@@ -100,7 +100,7 @@ U = model.compute_U(W_init, grid)
 
 # Compute covariance matrices Σ(x) on the fine and coarse grids.
 Sigmas_grid_fine = model.compute_Sigmas(U_fine)
-Sigmas_grid = model.compute_Sigmas(U)
+Sigmas_grid = model.compute_Sigmas(U) * 0.15
 
 #%%
 # -----------------------------------------------------------
@@ -128,7 +128,7 @@ pltSettings_sigma3D = replace(pltSettings_3Dsigma,
                               fig_size = (8,8.5) #(9.5,7)
                               )
 # Visualization helper for Wishart model quantities
-visualize_sigma3D = WishartModelBasicsVisualization(save_fig=True,
+visualize_sigma3D = WishartModelBasicsVisualization(save_fig=False,
                                                     settings=pltSettings_base,
                                                     save_format= 'png'
                                                     )
@@ -184,5 +184,4 @@ vis_html.plot_ellipsoids_mesh_cov(fig1, grid, Sigmas_grid)
 vis_html.apply_3d_layout(fig1)
 # Save interactive HTML
 out_html = os.path.join(fig_outputDir, f"{fig_name}.html")
-fig1.write_html(out_html, include_plotlyjs=True)
-
+vis_html.write_html(fig1, out_html, include_plotlyjs=True)

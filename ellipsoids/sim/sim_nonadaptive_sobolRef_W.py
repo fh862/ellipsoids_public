@@ -67,7 +67,7 @@ from plotting.adaptive_sampling_plotting import Plot3DSamplingHTMLSettings,\
 # Set up stimulus configuration and run simulations
 # -----------------------------------------------------------
 rnd_seed = 800       # RNG seed for reproducible NumPy-side randomness
-nSims = 75000        # number of simulated trials (one Sobol sample per trial)
+nSims = 25000        # number of simulated trials (one Sobol sample per trial)
 jitter = 0.3       # relative jitter level (sensible range: 0.1 - 0.5)
 
 # Select a pre-fit WPPM/Wishart model file:
@@ -147,7 +147,7 @@ str_optional = (color_thres_data.plane_2D.replace(" ", "") + '_') if ndims == 2 
 str2_optional = 'true_thres_' if not flag_approx_thres else ''
 figname = f"SimTrialData_nonadaptive_{ndims*2}DExpt_{str_optional}{str2_optional}"+\
     f"{nSims}total_jitter{jitter}_seed{rnd_seed}"
-flag_plot = False
+flag_plot = True
 if flag_plot:
     if ndims == 2:    
         pltSettings_tp = replace(Plot2DSamplingSettings(), **pltSettings_base.__dict__)
@@ -173,9 +173,13 @@ if flag_plot:
         plt3Dhtml_settings = Plot3DSamplingHTMLSettings()
         plt3Dhtml_settings = replace(plt3Dhtml_settings, font_size = 12)
         vis_sample_html = SamplingRefCompPairVisualization_html(settings=plt3Dhtml_settings)
-        fig = vis_sample_html.plot_sampling(xref, x1)
         out_html = os.path.join(output_figDir, f"{figname}.html")
-        fig.write_html(out_html, include_plotlyjs=True)
+        vis_sample_html.write_interactive_html(
+            xref,
+            x1,
+            out_html,
+            page_title=figname,
+        )
 
 #%% 
 # -----------------------------------------------------------

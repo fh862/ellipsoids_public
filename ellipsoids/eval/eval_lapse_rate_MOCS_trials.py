@@ -22,8 +22,9 @@ specified cutoff (default: 0.9), we may consider excluding that subject.
 import jax
 jax.config.update("jax_enable_x64", True)
 import numpy as np
-import os
-from analysis.utils_load import load_expt_data, select_file_and_get_path, extract_sub_number
+from analysis.utils_load import load_expt_data 
+#from dconfig.config_6Ddata import DatasetConfig_6D
+from dconfig.config_4Ddata import DatasetConfig_4D
 
 # ---------------------------------------------------------------------------
 # Load Data from All Sessions
@@ -31,32 +32,18 @@ from analysis.utils_load import load_expt_data, select_file_and_get_path, extrac
 # Base directory where experiment data is stored
 base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
-# Construct path to the subject's data directory
-# e.g., ELPS_analysis/Experiment_DataFiles/6D_Expt/sub1'
-# 'ColorDiscrimination_6dExpt_RGBcube_sub1_session1_copy.pkl'
-# OR
-# ELPS_analysis/Experiment_DataFiles/pilot2/sub1'
-# 'ColorDiscrimination_4dExpt_Isoluminant plane_sub1_session1_copy.pkl'
-input_fileDir, file_name = select_file_and_get_path()
-full_path = os.path.join(input_fileDir, file_name)
+subN = 2
 
-#extract subject number
-subN = extract_sub_number(file_name)
-
-# Number of sessions to analyze (selected session)
-# all subjects completed the same number of trials, but sub1 did them in less sessions
-###################### NEED TO MODIFY ######################
-ndims = 2 #2 or 3
-nSessions = 12 #10 or 12 for 2D/4D; 40 for 3D/6D
-############################################################
-exptCond = '_6dExpt_RGBcube' if ndims == 3 else '_4dExpt_Isoluminant plane'
+# choose dataset
+#dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
 
 #retrieve all the session files
 session_files, session_file_name_part1 = \
     load_expt_data.get_all_sessions_file_names(subN, 
-                                               nSessions, 
-                                               input_fileDir,
-                                               exptCond = exptCond
+                                               dcfg.nSession, 
+                                               dcfg.path_str,
+                                               exptCond = dcfg.exptCond
                                                )
 
 # Load session data from the files
@@ -74,7 +61,7 @@ for session_data in data_allSessions:
     mocs_trials = session_data['sim_interleaved_trial_sequence'].data_MOCS
     num_mocs_trials = len(mocs_trials)
 
-    # Stack trial-wise values into arrays of shape (N_trials, ndims) or (N_trials, 1)
+    # Stack trial-wise values into arrays of shape (N_trials, dcfg.stim_dims) or (N_trials, 1)
     xref_n = np.vstack([mocs_trials[trial]['xref'] for trial in range(num_mocs_trials)])
     x1_n   = np.vstack([mocs_trials[trial]['x1'] for trial in range(num_mocs_trials)])
     y_n    = np.vstack([mocs_trials[trial]['binaryResp'] for trial in range(num_mocs_trials)])
@@ -85,7 +72,7 @@ for session_data in data_allSessions:
     y_all_list.append(y_n)
 
 # Convert session-wise lists into arrays:
-#   xref_all, x1_all: (nSessions, nTrials, ndims)
+#   xref_all, x1_all: (nSessions, nTrials, dcfg.stim_dims)
 #   y_all:            (nSessions, nTrials, 1)
 xref_all = np.array(xref_all_list)
 x1_all = np.array(x1_all_list)
@@ -95,8 +82,8 @@ y_all = np.array(y_all_list)
 # Find the Euclidean distance between each ref and its associated catch trial
 # ---------------------------------------------------------------------------
 # Flatten across sessions so we can identify unique reference stimuli
-xref_all_flat = xref_all.reshape(-1, ndims)
-x1_all_flat = x1_all.reshape(-1, ndims)
+xref_all_flat = xref_all.reshape(-1, dcfg.stim_dims)
+x1_all_flat = x1_all.reshape(-1, dcfg.stim_dims)
 
 # Unique reference stimuli across all MOCS trials
 unique_xref = np.unique(xref_all_flat, axis=0)
@@ -122,12 +109,12 @@ for idx, ref_stimulus in enumerate(unique_xref):
 # Compute catch-trial performance for each session
 # ---------------------------------------------------------------------------
 # Per-session summary statistics for catch trials
-pC_easy_trials = np.full((nSessions,), np.nan)      # proportion correct
-num_easy_trials = np.full((nSessions,), np.nan)     # number of catch trials
-num_correct_trials = np.full((nSessions,), np.nan)  # number correct on catch trials
+pC_easy_trials = np.full((dcfg.nSession,), np.nan)      # proportion correct
+num_easy_trials = np.full((dcfg.nSession,), np.nan)     # number of catch trials
+num_correct_trials = np.full((dcfg.nSession,), np.nan)  # number correct on catch trials
 
 # Loop over each session
-for session_idx in range(nSessions):
+for session_idx in range(dcfg.nSession):
     # Responses from trials identified as catch/easy trials in this session
     y_easy_trials = []
 

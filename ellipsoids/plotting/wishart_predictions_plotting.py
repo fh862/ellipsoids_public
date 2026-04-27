@@ -126,6 +126,10 @@ class Plot3DPredHTMLSettings:
     camera_eye: Tuple[float,float,float] = (-1.8, -1.8, 1.2)
     camera_center: Tuple[float,float,float] = (0, 0, 0)
     camera_up: Tuple[float,float,float] = (0, 0, 1)
+    auto_spin_label: str = "auto spin"
+    auto_spin_stop_label: str = "stop"
+    auto_spin_step_deg: float = 5.0
+    auto_spin_interval_ms: int = 500
     # Plane style
     isoluminant_plane_color: Union[np.ndarray, List[float]] = field(default_factory=lambda: np.array([0.75,0.75,0.75]))
     isoluminant_edge_color: Union[np.ndarray, List[float]] = field(default_factory=lambda: np.array([0,0,0]))
@@ -1172,6 +1176,104 @@ class WishartPredictionsVisualization_html():
         else:
             self.lighting = None
             self.light_position = None
+
+    def _build_autospin_post_script(self):
+        return f"""
+const plotDiv = document.getElementById('{{plot_id}}');
+if (plotDiv) {{
+  const controls = document.createElement('div');
+  controls.style.display = 'flex';
+  controls.style.justifyContent = 'center';
+  controls.style.margin = '0 0 12px 0';
+
+  const spinButton = document.createElement('button');
+  spinButton.textContent = {self.st.auto_spin_label!r};
+  spinButton.type = 'button';
+  spinButton.style.padding = '8px 14px';
+  spinButton.style.border = '1px solid rgba(31, 41, 51, 0.18)';
+  spinButton.style.borderRadius = '999px';
+  spinButton.style.background = 'rgba(238,238,238,0.92)';
+  spinButton.style.color = '#1f2933';
+  spinButton.style.cursor = 'pointer';
+  spinButton.style.fontSize = '13px';
+  controls.appendChild(spinButton);
+
+  plotDiv.parentNode.insertBefore(controls, plotDiv);
+
+  let spinning = false;
+  let spinTimer = null;
+  let currentAngle = 0;
+  let cameraState = null;
+  let applyingSpinCamera = false;
+  const stepRad = {self.st.auto_spin_step_deg} * Math.PI / 180;
+
+  function getCameraState() {{
+    const camera = plotDiv._fullLayout?.scene?.camera || {{}};
+    return {{
+      eye: camera.eye || {{ x: 1.25, y: 1.25, z: 1.25 }},
+      center: camera.center || {{ x: 0, y: 0, z: 0 }},
+      up: camera.up || {{ x: 0, y: 0, z: 1 }},
+    }};
+  }}
+
+  function applyCamera(angle) {{
+    if (!cameraState) return;
+    const radius = Math.hypot(cameraState.eye.x, cameraState.eye.y) || 1.8;
+    const eye = {{
+      x: radius * Math.cos(angle),
+      y: radius * Math.sin(angle),
+      z: cameraState.eye.z,
+    }};
+    applyingSpinCamera = true;
+    Plotly.relayout(plotDiv, {{
+      'scene.camera.eye': eye,
+      'scene.camera.center': cameraState.center,
+      'scene.camera.up': cameraState.up,
+    }}).finally(() => {{
+      applyingSpinCamera = false;
+    }});
+  }}
+
+  function step() {{
+    if (!spinning) return;
+    currentAngle += stepRad;
+    applyCamera(currentAngle);
+  }}
+
+  function stopSpin() {{
+    spinning = false;
+    if (spinTimer !== null) {{
+      window.clearInterval(spinTimer);
+      spinTimer = null;
+    }}
+    spinButton.textContent = {self.st.auto_spin_label!r};
+  }}
+
+  function startSpin() {{
+    cameraState = getCameraState();
+    currentAngle = Math.atan2(cameraState.eye.y, cameraState.eye.x);
+    spinning = true;
+    spinButton.textContent = {self.st.auto_spin_stop_label!r};
+    step();
+    spinTimer = window.setInterval(step, {self.st.auto_spin_interval_ms});
+  }}
+
+  spinButton.addEventListener('click', () => {{
+    if (spinning) stopSpin();
+    else startSpin();
+  }});
+
+  plotDiv.on?.('plotly_relayout', function(eventData) {{
+    if (applyingSpinCamera) return;
+    if (
+      Object.prototype.hasOwnProperty.call(eventData, 'scene.camera.eye') ||
+      Object.prototype.hasOwnProperty.call(eventData, 'scene.camera')
+    ) {{
+      stopSpin();
+    }}
+  }});
+}}
+"""
         
     @staticmethod
     def to_rgb_str(rgb_like):
@@ -1402,6 +1504,16 @@ class WishartPredictionsVisualization_html():
             margin=dict(l=0, r=0, t=0, b=0),
         )
         return fig
+
+    def write_html(self, fig, out_html, include_plotlyjs=True, config=None):
+        if config is None:
+            config = {"responsive": True}
+        fig.write_html(
+            out_html,
+            include_plotlyjs=include_plotlyjs,
+            config=config,
+            post_script=self._build_autospin_post_script(),
+        )
     
     #optional
     def add_dashed_line3d(self, fig, p0, p1, n_dashes=50, color="#111", width=5, hover=False):

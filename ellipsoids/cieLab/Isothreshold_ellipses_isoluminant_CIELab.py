@@ -39,7 +39,7 @@ stim_dim = 2
 color_thres_data = color_thresholds(stim_dim, base_dir, plane_2D = 'Isoluminant plane')
 
 # Load monitor-specific calibration and transformation matrices
-color_thres_data.load_transformation_matrix(file_date = "02242025")
+color_thres_data.load_transformation_matrix(file_date = "02012026")
 M_RGBTo2DW = color_thres_data.M_RGBTo2DW  # RGB → 2D Wishart space
 M_2DWToRGB = color_thres_data.M_2DWToRGB  # 2D Wishart space → RGB
 
@@ -48,7 +48,7 @@ lb_W_grid = -0.7
 ub_W_grid = 0.7
 
 # Number of reference points per axis in the 2D grid
-nGridPts_ref = 5  # Can be adjusted for finer/coarser sampling
+nGridPts_ref = 7  # Can be adjusted for finer/coarser sampling
 
 # Reference grid spanning the normalized Wishart space
 grid_ref = np.linspace(lb_W_grid, ub_W_grid, nGridPts_ref)
@@ -83,7 +83,7 @@ scaler = 1
 #  derive CIELab predicted thresholds
 # -----------------------------------------------------------
 # Background RGB value used for Lab conversion (neutral gray)
-background_RGB = np.array([0.5, 0.5, 0.5])
+background_RGB = np.array([0.2390, 0.3086, 0.4876]) #[0.5, 0.5, 0.5]
 
 # Initialize simulator for CIELab-based threshold computations restricted to the isoluminant plane
 sim_thres_CIELab = SimThresCIELab(background_RGB, plane_2D_list=['Isoluminant plane'])
@@ -170,8 +170,12 @@ ax1.grid(True, alpha = 0.3)
 plt.tight_layout()
 plt.show()
 # Save the figure as a PDF
+if not np.array_equal(background_RGB, np.array([0.5, 0.5, 0.5])):
+    str_cr = f"_cr_{background_RGB[0]:.4f}_{background_RGB[1]:.4f}_{background_RGB[2]:.4f}"
+else:
+    str_cr = ''
 fig1.savefig(os.path.join(output_figDir, f"{color_diff_algorithm}_derived_threshold"+\
-                          f"_contours_isoluminant_plane_Wspace_grid{nGridPts_ref}.pdf"))
+                          f"_contours_isoluminant_plane_Wspace_grid{nGridPts_ref}{str_cr}.pdf"))
 
 # -----------------------------------------------------------
 # plot in 3D
@@ -214,14 +218,14 @@ pltTools._configure_labels_and_title(ax2, title = 'RGB cube', ndims = 3)
 ax2.set_aspect('equal')
 plt.show()
 # Save the figure as a PDF
-fig2.savefig(os.path.join(output_figDir, f"{color_diff_algorithm}_derived_threshold"+\
-                          f"_contours_isoluminant_plane_RGBspace_grid{nGridPts_ref}.pdf"))
+#fig2.savefig(os.path.join(output_figDir, f"{color_diff_algorithm}_derived_threshold"+\
+#                          f"_contours_isoluminant_plane_RGBspace_grid{nGridPts_ref}{str_cr}.pdf"))
         
 #%%
 # -----------------------------------------------------------
 # save the data
 # -----------------------------------------------------------
-file_name = f'Isothreshold_ellipses_isoluminant_{color_diff_algorithm}.pkl'
+file_name = f'Isothreshold_ellipses_isoluminant_{color_diff_algorithm}{str_cr}.pkl'
 full_path = os.path.join(output_fileDir, file_name)
 
 # NOTE ON SHAPES / COMPATIBILITY

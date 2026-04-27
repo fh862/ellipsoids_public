@@ -199,15 +199,15 @@ class MOCSWishartInteractiveHTMLPlotter:
                 )
         if ndims == 2:
             fig.update_layout(
-                paper_bgcolor="#eeeeee",
-                plot_bgcolor="#eeeeee",
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
                 font=dict(family="Arial", size=13),
                 margin=dict(l=52, r=24, t=24, b=52),
                 xaxis=dict(
                     title="Model space dimension 1",
                     range=[-1.0, 1.0],
                     tickvals=np.linspace(-0.7, 0.7, 5),
-                    gridcolor="rgba(30, 30, 30, 0.08)",
+                    gridcolor="rgba(30, 30, 30, 0.14)",
                     zeroline=False,
                     scaleanchor="y",
                     scaleratio=1,
@@ -216,7 +216,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                     title="Model space dimension 2",
                     range=[-1.0, 1.0],
                     tickvals=np.linspace(-0.7, 0.7, 5),
-                    gridcolor="rgba(30, 30, 30, 0.08)",
+                    gridcolor="rgba(30, 30, 30, 0.14)",
                     zeroline=False,
                 ),
                 legend=dict(
@@ -230,8 +230,8 @@ class MOCSWishartInteractiveHTMLPlotter:
             )
         else:
             fig.update_layout(
-                paper_bgcolor="#eeeeee",
-                plot_bgcolor="#eeeeee",
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
                 font=dict(family="Arial", size=13),
                 margin=dict(l=0, r=0, t=0, b=0),
                 scene=dict(
@@ -240,7 +240,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                         range=[-1.0, 1.0],
                         tickvals=np.linspace(-0.7, 0.7, 5),
                         showbackground=False,
-                        gridcolor="rgba(30, 30, 30, 0.08)",
+                        gridcolor="rgba(30, 30, 30, 0.24)",
                         zeroline=False,
                     ),
                     yaxis=dict(
@@ -248,7 +248,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                         range=[-1.0, 1.0],
                         tickvals=np.linspace(-0.7, 0.7, 5),
                         showbackground=False,
-                        gridcolor="rgba(30, 30, 30, 0.08)",
+                        gridcolor="rgba(30, 30, 30, 0.24)",
                         zeroline=False,
                     ),
                     zaxis=dict(
@@ -256,7 +256,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                         range=[-1.0, 1.0],
                         tickvals=np.linspace(-0.7, 0.7, 5),
                         showbackground=False,
-                        gridcolor="rgba(30, 30, 30, 0.08)",
+                        gridcolor="rgba(30, 30, 30, 0.24)",
                         zeroline=False,
                     ),
                     aspectmode="cube",
@@ -265,7 +265,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                         center=dict(x=0.0, y=0.0, z=0.0),
                         up=dict(x=0.0, y=0.0, z=1.0),
                     ),
-                    bgcolor="#eeeeee",
+                    bgcolor="#ffffff",
                 ),
                 legend=dict(
                     orientation="h",
@@ -419,15 +419,15 @@ class MOCSWishartInteractiveHTMLPlotter:
         ymin = min(ymin - 0.03, 0.33)
         ymin = max(0.0, ymin)
         fig.update_layout(
-            paper_bgcolor="#eeeeee",
-            plot_bgcolor="#eeeeee",
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
             font=dict(family="Arial", size=13),
             margin=dict(l=58, r=24, t=74, b=110),
             title=None,
             xaxis=dict(
                 title="Euclidean distance between reference and comparison stimuli in model space",
                 range=[0.0, xmax],
-                gridcolor="rgba(30, 30, 30, 0.08)",
+                gridcolor="rgba(30, 30, 30, 0.14)",
                 zeroline=False,
                 tickformat=".2f",
             ),
@@ -435,7 +435,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                 title="Proportion correct",
                 range=[ymin, 1.02],
                 tickvals=[0.33, 0.67, 1.0],
-                gridcolor="rgba(30, 30, 30, 0.08)",
+                gridcolor="rgba(30, 30, 30, 0.14)",
                 zeroline=False,
             ),
             showlegend=False,
@@ -551,8 +551,8 @@ class MOCSWishartInteractiveHTMLPlotter:
         )
 
         fig.update_layout(
-            paper_bgcolor="#eeeeee",
-            plot_bgcolor="#eeeeee",
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
             font=dict(family="Arial", size=13),
             margin=dict(l=62, r=24, t=74, b=60),
             title=None,
@@ -561,7 +561,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                 range=x_bds,
                 tickmode="array",
                 tickvals=tickvals,
-                gridcolor="rgba(30, 30, 30, 0.08)",
+                gridcolor="rgba(30, 30, 30, 0.14)",
                 zeroline=False,
                 tickformat=".2f",
             ),
@@ -570,7 +570,7 @@ class MOCSWishartInteractiveHTMLPlotter:
                 range=x_bds,
                 tickmode="array",
                 tickvals=tickvals,
-                gridcolor="rgba(30, 30, 30, 0.08)",
+                gridcolor="rgba(30, 30, 30, 0.14)",
                 zeroline=False,
                 tickformat=".2f",
                 scaleanchor="x",
@@ -652,7 +652,7 @@ class MOCSWishartInteractiveHTMLPlotter:
       align-items: stretch;
     }}
     .panel {{
-      background: rgba(238, 238, 238, 0.9);
+      background: #ffffff;
       border: 1px solid var(--edge);
       border-radius: 18px;
       box-shadow: 0 18px 40px rgba(73, 54, 27, 0.08);
@@ -663,6 +663,7 @@ class MOCSWishartInteractiveHTMLPlotter:
     }}
     .panel-header {{
       padding: 12px 16px 0 16px;
+      background: rgba(238, 238, 238, 0.9);
     }}
     .panel-title {{
       margin: 0;
@@ -736,6 +737,7 @@ class MOCSWishartInteractiveHTMLPlotter:
       width: 100%;
       height: 68vh;
       min-height: 520px;
+      background: #ffffff;
     }}
     .custom-legend {{
       display: flex;

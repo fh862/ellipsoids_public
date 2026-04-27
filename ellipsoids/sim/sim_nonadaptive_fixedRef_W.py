@@ -148,9 +148,13 @@ else:
     plt3Dhtml_settings= Plot3DSamplingHTMLSettings()
     plt3Dhtml_settings = replace(plt3Dhtml_settings, font_size = 12)
     vis_sample_html = SamplingRefCompPairVisualization_html(settings=plt3Dhtml_settings)
-    fig = vis_sample_html.plot_sampling(xref, x1)
     out_html = os.path.join(output_figDir, f"{figname}.html")
-    fig.write_html(out_html, include_plotlyjs=True)
+    vis_sample_html.write_interactive_html(
+        xref,
+        x1,
+        out_html,
+        page_title=figname,
+    )
     
     #pdf
     pltSettings_tp = replace(pltSettings_tp, 

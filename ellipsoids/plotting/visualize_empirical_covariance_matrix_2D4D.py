@@ -122,7 +122,7 @@ if flag_random_ref:
     grid_new = np.reshape(dots, (ngrid_pts, ngrid_pts, ndims))
 
     # Recompute threshold predictions on the new reference grid using the existing fit
-    modelpred_new, _ = rerun_model_pred_wExisting_model(
+    modelpred_new = rerun_model_pred_wExisting_model(
         grid_new, modelpred, color_thres_data
     )
     
@@ -149,7 +149,7 @@ else:
             axis=-1
         )
 
-        modelpred_new, _ = rerun_model_pred_wExisting_model(
+        modelpred_new = rerun_model_pred_wExisting_model(
             grid_new, modelpred, color_thres_data
         )
         
@@ -242,4 +242,3 @@ pltUSettings = replace(pltUSettings,
                        fig_name_ext = f'{figname_ext}'
                        )
 visualize_sigma2D.plot_U_2D(U_est, settings = pltUSettings)
-

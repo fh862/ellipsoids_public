@@ -10,9 +10,10 @@ from __future__ import annotations
 from scipy.io import loadmat
 import colour
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 import sys
 import os
+import warnings
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Tuple, Sequence, Dict, List
@@ -547,10 +548,80 @@ class SimThresCIELab:
         return np.concatenate([left, fi, right], axis=C)
 
 #%%
+def fit_best_scaler_for_covariance_match(
+    cov_ref,
+    cov_match,
+    bounds=(0.1, 5),
+    tol=1e-5,
+    maxiter=500,
+):
+    """
+    Fit one scalar that best matches two batches of covariance matrices.
+
+    The fitted scalar `d` rescales `cov_match` as `(d**2) * cov_match`, which
+    corresponds to scaling ellipse radii by `d`. Both inputs are reshaped to
+    `(-1, 2, 2)` before optimization.
+
+    Parameters
+    ----------
+    cov_ref : array_like
+        Reference covariance matrices with shape (..., 2, 2).
+    cov_match : array_like
+        Covariance matrices to be scaled, with the same shape as `cov_ref`.
+    bounds : tuple, optional
+        Lower and upper bounds for the fitted scaler.
+    tol : float, optional
+        Tolerance for warning when the optimum lands near a bound.
+    maxiter : int, optional
+        Maximum number of iterations for `minimize_scalar`.
+
+    Returns
+    -------
+    bestfit_scaler : float
+        Best-fitting scalar applied to ellipse radii.
+    """
+    cov_ref = np.asarray(cov_ref, dtype=float)
+    cov_match = np.asarray(cov_match, dtype=float)
+
+    if cov_ref.shape != cov_match.shape:
+        raise ValueError(
+            f"`cov_ref` and `cov_match` must have the same shape, got "
+            f"{cov_ref.shape} and {cov_match.shape}."
+        )
+    if cov_ref.ndim < 2 or cov_ref.shape[-2:] != (2, 2):
+        raise ValueError(
+            f"Expected covariance inputs with shape (..., 2, 2), got {cov_ref.shape}."
+        )
+
+    cov_ref_flat = cov_ref.reshape(-1, 2, 2)
+    cov_match_flat = cov_match.reshape(-1, 2, 2)
+
+    sum_sqerr = lambda d: np.sum(
+        (cov_ref_flat - (d ** 2) * cov_match_flat) ** 2
+    )
+
+    res = minimize_scalar(
+        sum_sqerr,
+        bounds=bounds,
+        method="bounded",
+        options={"maxiter": maxiter},
+    )
+
+    bestfit_scaler = res.x
+
+    if abs(bestfit_scaler - bounds[0]) < tol or abs(bestfit_scaler - bounds[1]) < tol:
+        warnings.warn(
+            f"bestfit_scaler={bestfit_scaler:.4f} is at or very near the bounds "
+            f"[{bounds[0]}, {bounds[1]}]",
+            RuntimeWarning,
+        )
+
+    return bestfit_scaler
+
+#%%
 def strip_trailing_zeros(s):
     return s.rstrip('0').rstrip('.')
 
-#%%
 #the following classes and methods are used to visualize boundary points and slices
 #of L*a*b* that are within monitor's gamut
 class FixedDim(IntEnum):

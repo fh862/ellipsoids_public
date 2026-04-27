@@ -67,7 +67,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
 #change the knob here
-subN = 1
+subN = 2
 
 # choose one dataset
 #dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
@@ -140,7 +140,7 @@ for n in tqdm(range(nRefs), desc="Bootstrapping Progress"):
                                              responses_n_wOrigin,
                                              nLevels + 1, #+1 because we stick 0 in there
                                              dist_metric= 'Euclidean',
-                                             bounds = [(1e-4, 0.5), (1e-2, 8)]
+                                             bounds = [(1e-4, 1), (1e-2, 14)]
                                              ) 
     #fit a psychometric function
     fit_PMF_MOCS_exptN.fit_PsychometricFunc_toData()
@@ -229,10 +229,10 @@ xref_unique_ext = xref_unique[(None,) * (dcfg.stim_dims - 1)]
 Sigmas_est_xref_unique = model.compute_Sigmas(model.compute_U(W_est, xref_unique_ext))
 
 # Initialize the Wishart model prediction using various parameters.
-model_pred_Wishart_MOCS, _ = rerun_model_pred_wExisting_model(xref_unique_ext,
-                                                              model_pred_Wishart,
-                                                              color_thres_data
-                                                              )
+model_pred_Wishart_MOCS = rerun_model_pred_wExisting_model(xref_unique_ext,
+                                                           model_pred_Wishart,
+                                                           color_thres_data
+                                                           )
 
 #%%
 # ---------------------------------------------------------------------------

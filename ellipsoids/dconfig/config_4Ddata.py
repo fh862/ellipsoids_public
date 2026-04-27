@@ -56,6 +56,7 @@ class DatasetConfig_4D:
     grid_1d: Optional[jnp.ndarray] = field(init=False, default=None)
     grid_1: Optional[jnp.ndarray] = field(init=False, default=None)
     grid_2: Optional[jnp.ndarray] = field(init=False, default=None)
+    path_fits_str: str = field(init=False)
     str_ext_s: str = field(init=False, default='')
 
     def __post_init__(self):
@@ -67,6 +68,14 @@ class DatasetConfig_4D:
             )
         else:
             self.str_ext_s = ''
+
+        # Varying-background 4D datasets store per-condition fits separately,
+        # while all other 4D datasets keep fits directly under `fits`.
+        if '4D_Expt_varyingBackground' in self.path_str:
+            self.path_fits_str = os.path.join(self.path_str, 'fits', 'indv_fits')
+        else:
+            self.path_fits_str = os.path.join(self.path_str, 'fits')
+        os.makedirs(self.path_fits_str, exist_ok=True)
 
         # auto-generate file name for simulated data
         if not self.flag_load_datafile and self.file_name is None:
@@ -89,6 +98,7 @@ class DatasetConfig_4D:
             self.grid_2 = jnp.linspace(-self.grid_lim_2, self.grid_lim_2, self.num_grid_pts2)
             g1, g2 = jnp.meshgrid(self.grid_1, self.grid_2)
             self.grid = jnp.stack([g1, g2], axis=-1)
+            #self.grid.shape = (self.num_grid_pts2, self.num_grid_pts1, 2) #y-axis, x-axis, 2
         else:
             raise ValueError("Grid specification is incomplete.")
 
@@ -177,8 +187,8 @@ class DatasetConfig_4D:
             adaptation_cond_str='',
             exptCond='_4dExpt_LSisolating plane',
             bg_rgb = None,
-            num_grid_pts1=5,
-            num_grid_pts2=7,
+            num_grid_pts1=5, #x-axis
+            num_grid_pts2=7, #y-axis
             bds_bruteforce=[0.0005, 0.55],
         )
 

@@ -6,6 +6,7 @@ Created on Tue Jul 23 17:39:59 2024
 @author: fangfang
 """
 
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -13,7 +14,9 @@ from dataclasses import dataclass, field
 from typing import List, Tuple
 from datetime import datetime
 import plotly.graph_objects as go
+import plotly.io as pio
 import os
+from plotly.offline.offline import get_plotlyjs
 from analysis.color_thres import color_thresholds
 from plotting.wishart_plotting import PlottingTools, PlotSettingsBase
 from plotting.wishart_predictions_plotting import Plot3DPredHTMLSettings,\
@@ -283,34 +286,43 @@ class SamplingRefCompPairVisualization_html(WishartPredictionsVisualization_html
         c01 = np.clip(c01, 0.0, 1.0)
         return self.to_rgb_str(c01)   # inherited staticmethod
 
-    def add_ref_comp_segments(self, fig, xref, x1, colors_xref):
-        """Add line segments from xref -> x1, colored by xref color."""
-        xref = np.asarray(xref, float)
-        x1   = np.asarray(x1,   float)
-        N = xref.shape[0]
+    @staticmethod
+    def _build_segment_coords(xref, x1):
+        """Flatten xref->x1 segments into Plotly-ready arrays separated by NaN."""
+        xs = []
+        ys = []
+        zs = []
+        for a, b in zip(xref, x1):
+            xs.extend([a[0], b[0], np.nan])
+            ys.extend([a[1], b[1], np.nan])
+            zs.extend([a[2], b[2], np.nan])
+        return xs, ys, zs
 
-        for i in range(N):
-            a = xref[i]
-            b = x1[i]
-            fig.add_trace(go.Scatter3d(
-                x=[a[0], b[0]],
-                y=[a[1], b[1]],
-                z=[a[2], b[2]],
-                mode="lines",
-                line=dict(color=colors_xref[i], width=self.st.line_width),
-                opacity=self.st.line_opacity,
-                hoverinfo="skip",
-                showlegend=False,
-            ))
-        return fig
+    @staticmethod
+    def _build_segment_colors(colors_xref):
+        """Repeat each ref color for the two endpoints and the separator slot."""
+        seg_colors = []
+        for color in colors_xref:
+            seg_colors.extend([color, color, color])
+        return seg_colors
 
-    def add_markers(self, fig, xref, x1, colors_xref, colors_x1):
-        """Add xref '+' text markers and x1 circle markers."""
-        xref = np.asarray(xref, float)
-        x1   = np.asarray(x1,   float)
+    def _make_segment_trace(self, xs, ys, zs, seg_colors, name="xref-x1 pairs",
+                            legendgroup=None, showlegend=False):
+        return go.Scatter3d(
+            x=xs,
+            y=ys,
+            z=zs,
+            mode="lines",
+            line=dict(color=seg_colors, width=self.st.line_width),
+            opacity=self.st.line_opacity,
+            hoverinfo="skip",
+            showlegend=showlegend,
+            legendgroup=legendgroup,
+            name=name,
+        )
 
-        # xref as "+" text
-        fig.add_trace(go.Scatter3d(
+    def _make_xref_trace(self, xref, colors_xref, legendgroup=None):
+        return go.Scatter3d(
             x=xref[:, 0],
             y=xref[:, 1],
             z=xref[:, 2],
@@ -325,10 +337,12 @@ class SamplingRefCompPairVisualization_html(WishartPredictionsVisualization_html
             opacity=self.st.xref_opacity,
             hoverinfo="skip",
             showlegend=False,
-        ))
+            legendgroup=legendgroup,
+            name="xref",
+        )
 
-        # x1 as circle markers
-        fig.add_trace(go.Scatter3d(
+    def _make_x1_trace(self, x1, colors_x1, legendgroup=None):
+        return go.Scatter3d(
             x=x1[:, 0],
             y=x1[:, 1],
             z=x1[:, 2],
@@ -341,11 +355,170 @@ class SamplingRefCompPairVisualization_html(WishartPredictionsVisualization_html
             ),
             hoverinfo="skip",
             showlegend=False,
+            legendgroup=legendgroup,
             name="x1",
-        ))
-        return fig
+        )
 
-    def plot_sampling(self, xref, x1):
+    def _make_cumulative_frame(self, frame_name, trace_payloads):
+        return go.Frame(
+            name=frame_name,
+            data=trace_payloads["data"],
+            traces=trace_payloads["traces"],
+        )
+
+    @staticmethod
+    def _build_exponential_counts(n_pairs):
+        """Return cumulative pair counts: 1, 2, 4, ... and always include n_pairs."""
+        if n_pairs <= 0:
+            return []
+
+        counts = []
+        count = 1
+        while count < n_pairs:
+            counts.append(count)
+            count *= 2
+
+        if not counts or counts[-1] != n_pairs:
+            counts.append(n_pairs)
+        return counts
+
+    @staticmethod
+    def _normalize_trial_categories(trial_category, num_trial_per_category, n_pairs):
+        if trial_category is None and num_trial_per_category is None:
+            return None
+
+        if trial_category is None or num_trial_per_category is None:
+            raise ValueError(
+                "trial_category and num_trial_per_category must either both be provided or both be None."
+            )
+        if len(trial_category) != len(num_trial_per_category):
+            raise ValueError("trial_category and num_trial_per_category must have the same length.")
+        if len(trial_category) == 0:
+            raise ValueError("trial_category must contain at least one category.")
+
+        counts = [int(n) for n in num_trial_per_category]
+        if any(n <= 0 for n in counts):
+            raise ValueError("Each entry in num_trial_per_category must be positive.")
+        if sum(counts) != n_pairs:
+            raise ValueError(
+                "The sum of num_trial_per_category must equal the total number of trial pairs."
+            )
+
+        categories = []
+        start = 0
+        for idx, (label, count) in enumerate(zip(trial_category, counts)):
+            stop = start + count
+            categories.append(
+                {
+                    "idx": idx,
+                    "label": str(label),
+                    "start": start,
+                    "stop": stop,
+                    "count": count,
+                }
+            )
+            start = stop
+        return categories
+
+    def _add_build_controls(self, fig, frame_names):
+        slider_steps = [
+            dict(
+                method="animate",
+                label=frame_name.split("_")[-1],
+                args=[
+                    [frame_name],
+                    {
+                        "mode": "immediate",
+                        "frame": {"duration": 0, "redraw": True},
+                        "transition": {"duration": 0},
+                    },
+                ],
+            )
+            for i, frame_name in enumerate(frame_names)
+        ]
+
+        fig.update_layout(
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="left",
+                    x=0.02,
+                    y=1.08,
+                    xanchor="left",
+                    yanchor="bottom",
+                    buttons=[
+                        dict(
+                            label="Show All",
+                            method="animate",
+                            args=[
+                                ["all_pairs"],
+                                {
+                                    "mode": "immediate",
+                                    "frame": {"duration": 0, "redraw": True},
+                                    "transition": {"duration": 0},
+                                },
+                            ],
+                        ),
+                        dict(
+                            label="Build",
+                            method="animate",
+                            args=[
+                                frame_names,
+                                {
+                                    "mode": "immediate",
+                                    "frame": {"duration": 120, "redraw": True},
+                                    "transition": {"duration": 0},
+                                    "fromcurrent": False,
+                                },
+                            ],
+                        ),
+                    ],
+                )
+            ],
+            sliders=[
+                dict(
+                    active=max(len(frame_names) - 1, 0),
+                    currentvalue={"prefix": "Pairs shown: "},
+                    pad={"t": 52},
+                    steps=slider_steps,
+                )
+            ],
+        )
+
+    def _add_category_legend(self, fig):
+        fig.update_layout(
+            legend=dict(
+                title=dict(text="Categories"),
+                orientation="v",
+                x=1.02,
+                y=1.0,
+                xanchor="left",
+                yanchor="top",
+                groupclick="togglegroup",
+            ),
+            margin=dict(r=180),
+        )
+
+    def _build_trace_payload(self, xref, x1, colors_xref, colors_x1, upto_idx,
+                             legendgroup=None, name="xref-x1 pairs", showlegend=False):
+        xref_slc = xref[:upto_idx]
+        x1_slc = x1[:upto_idx]
+        colors_xref_slc = colors_xref[:upto_idx]
+        colors_x1_slc = colors_x1[:upto_idx]
+        xs, ys, zs = self._build_segment_coords(xref_slc, x1_slc)
+        seg_colors = self._build_segment_colors(colors_xref_slc)
+        return [
+            self._make_segment_trace(
+                xs, ys, zs, seg_colors,
+                name=name,
+                legendgroup=legendgroup,
+                showlegend=showlegend,
+            ),
+            self._make_xref_trace(xref_slc, colors_xref_slc, legendgroup=legendgroup),
+            self._make_x1_trace(x1_slc, colors_x1_slc, legendgroup=legendgroup),
+        ]
+
+    def plot_sampling(self, xref, x1, trial_category=None, num_trial_per_category=None):
         """
         Create a 3D sampling figure showing xref–x1 pairs.
 
@@ -353,6 +526,13 @@ class SamplingRefCompPairVisualization_html(WishartPredictionsVisualization_html
         ----------
         xref, x1 : array-like, shape (N, 3)
             W-unit coordinates of references and comparisons.
+        trial_category : sequence of str, optional
+            Category labels for contiguous blocks of trials. When provided with
+            `num_trial_per_category`, category buttons are added to switch the
+            figure to a specific trial block.
+        num_trial_per_category : sequence of int, optional
+            Number of trials in each category. The cumulative sums define the
+            slices used to select trials for each category.
 
         Returns
         -------
@@ -360,15 +540,635 @@ class SamplingRefCompPairVisualization_html(WishartPredictionsVisualization_html
         """
         xref = np.asarray(xref, float)
         x1   = np.asarray(x1,   float)
+        if xref.shape != x1.shape:
+            raise ValueError("xref and x1 must have the same shape.")
+        if xref.ndim != 2 or xref.shape[1] != 3:
+            raise ValueError("xref and x1 must have shape (N, 3).")
+        categories = self._normalize_trial_categories(
+            trial_category, num_trial_per_category, xref.shape[0]
+        )
 
         # Colors from W -> RGB
         colors_xref = [self.color_from_W(r) for r in xref]
         colors_x1   = [self.color_from_W(r) for r in x1]
 
         fig = go.Figure()
-        fig = self.add_ref_comp_segments(fig, xref, x1, colors_xref)
-        fig = self.add_markers(fig, xref, x1, colors_xref, colors_x1)
+
+        if xref.shape[0] > 0:
+            if categories is None:
+                for trace in self._build_trace_payload(
+                    xref, x1, colors_xref, colors_x1, upto_idx=xref.shape[0]
+                ):
+                    fig.add_trace(trace)
+
+                build_counts = self._build_exponential_counts(xref.shape[0])
+                build_frame_names = [f"build_{count}" for count in build_counts]
+                frames = [
+                    self._make_cumulative_frame(
+                        frame_name,
+                        {
+                            "data": self._build_trace_payload(
+                                xref, x1, colors_xref, colors_x1, upto_idx=count
+                            ),
+                            "traces": [0, 1, 2],
+                        },
+                    )
+                    for frame_name, count in zip(build_frame_names, build_counts)
+                ]
+                frames.append(
+                    self._make_cumulative_frame(
+                        "all_pairs",
+                        {
+                            "data": self._build_trace_payload(
+                                xref, x1, colors_xref, colors_x1, upto_idx=xref.shape[0]
+                            ),
+                            "traces": [0, 1, 2],
+                        },
+                    )
+                )
+                fig.frames = frames
+                self._add_build_controls(fig, build_frame_names)
+            else:
+                for cat in categories:
+                    xref_cat = xref[cat["start"]:cat["stop"]]
+                    x1_cat = x1[cat["start"]:cat["stop"]]
+                    colors_xref_cat = colors_xref[cat["start"]:cat["stop"]]
+                    colors_x1_cat = colors_x1[cat["start"]:cat["stop"]]
+                    for trace in self._build_trace_payload(
+                        xref_cat,
+                        x1_cat,
+                        colors_xref_cat,
+                        colors_x1_cat,
+                        upto_idx=cat["count"],
+                        legendgroup=cat["label"],
+                        name=cat["label"],
+                        showlegend=True,
+                    ):
+                        fig.add_trace(trace)
+
+                build_counts = self._build_exponential_counts(xref.shape[0])
+                build_frame_names = [f"build_{count}" for count in build_counts]
+                frames = []
+                trace_indices = list(range(3 * len(categories)))
+
+                for frame_name, global_count in zip(build_frame_names, build_counts):
+                    frame_data = []
+                    for cat in categories:
+                        xref_cat = xref[cat["start"]:cat["stop"]]
+                        x1_cat = x1[cat["start"]:cat["stop"]]
+                        colors_xref_cat = colors_xref[cat["start"]:cat["stop"]]
+                        colors_x1_cat = colors_x1[cat["start"]:cat["stop"]]
+                        upto_idx = min(max(global_count - cat["start"], 0), cat["count"])
+                        frame_data.extend(
+                            self._build_trace_payload(
+                                xref_cat,
+                                x1_cat,
+                                colors_xref_cat,
+                                colors_x1_cat,
+                                upto_idx=upto_idx,
+                                legendgroup=cat["label"],
+                                name=cat["label"],
+                                showlegend=True,
+                            )
+                        )
+                    frames.append(
+                        self._make_cumulative_frame(
+                            frame_name,
+                            {
+                                "data": frame_data,
+                                "traces": trace_indices,
+                            },
+                        )
+                    )
+
+                frames.append(
+                    self._make_cumulative_frame(
+                        "all_pairs",
+                        {
+                            "data": list(fig.data),
+                            "traces": trace_indices,
+                        },
+                    )
+                )
+                fig.frames = frames
+                self._add_build_controls(fig, build_frame_names)
+                self._add_category_legend(fig)
 
         # `apply_3d_layout` is inherited from WishartPredictionsVisualization_html
         fig = self.apply_3d_layout(fig)
         return fig
+
+    def _build_category_payloads(self, xref, x1, trial_category=None, num_trial_per_category=None):
+        xref = np.asarray(xref, float)
+        x1 = np.asarray(x1, float)
+        categories = self._normalize_trial_categories(
+            trial_category, num_trial_per_category, xref.shape[0]
+        )
+        explicit_categories = categories is not None
+        if categories is None:
+            categories = [
+                {
+                    "idx": 0,
+                    "label": "All trials",
+                    "start": 0,
+                    "stop": xref.shape[0],
+                    "count": xref.shape[0],
+                }
+            ]
+
+        colors_xref = [self.color_from_W(r) for r in xref]
+        colors_x1 = [self.color_from_W(r) for r in x1]
+        payloads = []
+        for cat in categories:
+            start = cat["start"]
+            stop = cat["stop"]
+            payloads.append(
+                {
+                    "idx": cat["idx"],
+                    "label": cat["label"],
+                    "xref": xref[start:stop].tolist(),
+                    "x1": x1[start:stop].tolist(),
+                    "colors_xref": colors_xref[start:stop],
+                    "colors_x1": colors_x1[start:stop],
+                }
+            )
+        return payloads, explicit_categories
+
+    def write_interactive_html(
+        self,
+        xref,
+        x1,
+        output_html,
+        trial_category=None,
+        num_trial_per_category=None,
+        page_title="Adaptive Trial Placement",
+    ):
+        payloads, explicit_categories = self._build_category_payloads(
+            xref,
+            x1,
+            trial_category=trial_category,
+            num_trial_per_category=num_trial_per_category,
+        )
+
+        base_fig = self.apply_3d_layout(go.Figure())
+        base_fig.update_layout(
+            showlegend=False,
+            uirevision="sampling-html",
+            margin=dict(l=0, r=0, t=0, b=0),
+        )
+
+        plotly_js = get_plotlyjs()
+        base_fig_json = pio.to_json(base_fig, pretty=False)
+        payloads_json = json.dumps(payloads)
+        show_categories = "true" if explicit_categories else "false"
+
+        html_str = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{page_title}</title>
+  <style>
+    :root {{
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --ink: #22324a;
+      --muted: #6b7280;
+      --edge: rgba(34, 50, 74, 0.18);
+      --active: #dfeaf8;
+      --active-border: #6d96cf;
+    }}
+    body {{
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }}
+    .page {{
+      padding: 18px 22px 26px 22px;
+      box-sizing: border-box;
+    }}
+    .title {{
+      margin: 0 0 14px 0;
+      font-size: 22px;
+      font-weight: 700;
+    }}
+    .panel {{
+      background: var(--panel);
+      border: 1px solid rgba(34, 50, 74, 0.10);
+      border-radius: 18px;
+      box-shadow: 0 18px 42px rgba(34, 50, 74, 0.08);
+      overflow: hidden;
+    }}
+    .controls {{
+      padding: 18px 18px 8px 18px;
+      border-bottom: 1px solid rgba(34, 50, 74, 0.08);
+    }}
+    .row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }}
+    .row:last-child {{
+      margin-bottom: 0;
+    }}
+    .control-button {{
+      border: 1px solid var(--edge);
+      background: #ffffff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }}
+    .control-button.active {{
+      background: var(--active);
+      border-color: var(--active-border);
+    }}
+    .category-button {{
+      border: 1px solid var(--edge);
+      background: #ffffff;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+    }}
+    .category-button.active {{
+      background: var(--active);
+      border-color: var(--active-border);
+    }}
+    .label {{
+      font-size: 13px;
+      color: var(--muted);
+      min-width: fit-content;
+    }}
+    .counter {{
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: 4px;
+    }}
+    .slider {{
+      width: 100%;
+    }}
+    .slider-wrap {{
+      flex: 1 1 320px;
+      min-width: 240px;
+    }}
+    .slider-ticks {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 4px;
+      margin-top: 6px;
+      min-height: 32px;
+    }}
+    .slider-tick {{
+      flex: 1 1 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.15;
+    }}
+    .slider-tick::before {{
+      content: "";
+      display: block;
+      width: 1px;
+      height: 8px;
+      margin: 0 auto 4px auto;
+      background: rgba(34, 50, 74, 0.28);
+    }}
+    .plot-wrap {{
+      height: 760px;
+    }}
+    #sampling-plot {{
+      width: 100%;
+      height: 100%;
+    }}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1 class="title">{page_title}</h1>
+    <div class="panel">
+      <div class="controls">
+        <div class="row">
+          <button id="show-all-button" class="control-button active" type="button">Show All</button>
+          <button id="build-button" class="control-button" type="button">Build</button>
+          <div id="counter-label" class="counter"></div>
+        </div>
+        <div id="category-row" class="row" style="display:none;">
+          <div class="label">Categories:</div>
+          <div id="category-buttons" class="row" style="margin-bottom:0;"></div>
+        </div>
+        <div class="row">
+          <div class="label">Build step:</div>
+          <div class="slider-wrap">
+            <input id="build-slider" class="slider" type="range" min="0" max="0" value="0" step="1" disabled>
+            <div id="slider-ticks" class="slider-ticks"></div>
+          </div>
+          <div id="slider-label" class="counter"></div>
+        </div>
+      </div>
+      <div class="plot-wrap">
+        <div id="sampling-plot"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>{plotly_js}</script>
+  <script>
+    const baseFig = {base_fig_json};
+    const categoryPayloads = {payloads_json};
+    const showCategories = {show_categories};
+    const plotDiv = document.getElementById("sampling-plot");
+    const showAllButton = document.getElementById("show-all-button");
+    const buildButton = document.getElementById("build-button");
+    const buildSlider = document.getElementById("build-slider");
+    const sliderTicks = document.getElementById("slider-ticks");
+    const counterLabel = document.getElementById("counter-label");
+    const sliderLabel = document.getElementById("slider-label");
+    const categoryRow = document.getElementById("category-row");
+    const categoryButtons = document.getElementById("category-buttons");
+
+    let mode = "all";
+    let buildStepIdx = 0;
+    let latestBuildCounts = [];
+    let buildTimer = null;
+    const selectedCategoryIdxs = new Set(categoryPayloads.map((_, idx) => idx));
+    const buildIntervalMs = 380;
+
+    function buildExponentialCounts(nPairs) {{
+      if (nPairs <= 0) return [];
+      const counts = [];
+      let count = 1;
+      while (count < nPairs) {{
+        counts.push(count);
+        count *= 2;
+      }}
+      if (!counts.length || counts[counts.length - 1] !== nPairs) {{
+        counts.push(nPairs);
+      }}
+      return counts;
+    }}
+
+    function getSelectedPairs() {{
+      const pairs = [];
+      categoryPayloads.forEach((payload, idx) => {{
+        if (!selectedCategoryIdxs.has(idx)) return;
+        for (let i = 0; i < payload.xref.length; i += 1) {{
+          pairs.push({{
+            xref: payload.xref[i],
+            x1: payload.x1[i],
+            refColor: payload.colors_xref[i],
+            x1Color: payload.colors_x1[i],
+          }});
+        }}
+      }});
+      return pairs;
+    }}
+
+    function buildTraces(pairs) {{
+      const segX = [];
+      const segY = [];
+      const segZ = [];
+      const segColors = [];
+      const xrefX = [];
+      const xrefY = [];
+      const xrefZ = [];
+      const xrefColors = [];
+      const x1X = [];
+      const x1Y = [];
+      const x1Z = [];
+      const x1Colors = [];
+
+      pairs.forEach((pair) => {{
+        segX.push(pair.xref[0], pair.x1[0], NaN);
+        segY.push(pair.xref[1], pair.x1[1], NaN);
+        segZ.push(pair.xref[2], pair.x1[2], NaN);
+        segColors.push(pair.refColor, pair.refColor, pair.refColor);
+
+        xrefX.push(pair.xref[0]);
+        xrefY.push(pair.xref[1]);
+        xrefZ.push(pair.xref[2]);
+        xrefColors.push(pair.refColor);
+
+        x1X.push(pair.x1[0]);
+        x1Y.push(pair.x1[1]);
+        x1Z.push(pair.x1[2]);
+        x1Colors.push(pair.x1Color);
+      }});
+
+      return [
+        {{
+          type: "scatter3d",
+          mode: "lines",
+          x: segX,
+          y: segY,
+          z: segZ,
+          line: {{
+            color: segColors,
+            width: {self.st.line_width},
+          }},
+          opacity: {self.st.line_opacity},
+          hoverinfo: "skip",
+          showlegend: false,
+          name: "xref-x1 pairs",
+        }},
+        {{
+          type: "scatter3d",
+          mode: "text",
+          x: xrefX,
+          y: xrefY,
+          z: xrefZ,
+          text: Array(xrefX.length).fill({self.st.xref_text!r}),
+          textposition: "middle center",
+          textfont: {{
+            family: {self.st.font_family!r},
+            size: {self.st.xref_text_size},
+            color: xrefColors,
+          }},
+          opacity: {self.st.xref_opacity},
+          hoverinfo: "skip",
+          showlegend: false,
+          name: "xref",
+        }},
+        {{
+          type: "scatter3d",
+          mode: "markers",
+          x: x1X,
+          y: x1Y,
+          z: x1Z,
+          marker: {{
+            symbol: {self.st.x1_marker_symbol!r},
+            size: {self.st.x1_marker_size},
+            color: x1Colors,
+            opacity: {self.st.x1_opacity},
+          }},
+          hoverinfo: "skip",
+          showlegend: false,
+          name: "x1",
+        }},
+      ];
+    }}
+
+    function setModeButtons() {{
+      showAllButton.classList.toggle("active", mode === "all");
+      buildButton.classList.toggle("active", mode === "build");
+    }}
+
+    function setCategoryButtons() {{
+      if (!showCategories) return;
+      Array.from(categoryButtons.children).forEach((button, idx) => {{
+        button.classList.toggle("active", selectedCategoryIdxs.has(idx));
+      }});
+    }}
+
+    function stopAutoBuild() {{
+      if (buildTimer !== null) {{
+        window.clearInterval(buildTimer);
+        buildTimer = null;
+      }}
+    }}
+
+    function updateSliderTicks(buildCounts) {{
+      sliderTicks.innerHTML = "";
+      if (!buildCounts.length) {{
+        return;
+      }}
+      buildCounts.forEach((count) => {{
+        const tick = document.createElement("div");
+        tick.className = "slider-tick";
+        tick.textContent = count.toLocaleString();
+        sliderTicks.appendChild(tick);
+      }});
+    }}
+
+    function startAutoBuild() {{
+      stopAutoBuild();
+      if (mode !== "build" || latestBuildCounts.length <= 1) {{
+        return;
+      }}
+      if (buildStepIdx >= latestBuildCounts.length - 1) {{
+        return;
+      }}
+      buildTimer = window.setInterval(() => {{
+        if (mode !== "build") {{
+          stopAutoBuild();
+          return;
+        }}
+        if (buildStepIdx >= latestBuildCounts.length - 1) {{
+          stopAutoBuild();
+          return;
+        }}
+        buildStepIdx += 1;
+        render(false);
+      }}, buildIntervalMs);
+    }}
+
+    function updateSlider(buildCounts, visibleCount, totalCount) {{
+      latestBuildCounts = buildCounts.slice();
+      updateSliderTicks(buildCounts);
+      if (mode === "build" && buildCounts.length > 0) {{
+        buildSlider.disabled = false;
+        buildSlider.min = 0;
+        buildSlider.max = buildCounts.length - 1;
+        buildSlider.value = buildStepIdx;
+        sliderLabel.textContent = `Step ${{buildStepIdx + 1}} / ${{buildCounts.length}}`;
+        counterLabel.textContent = `Pairs shown: ${{visibleCount}} of ${{totalCount}}`;
+      }} else {{
+        buildSlider.disabled = true;
+        buildSlider.min = 0;
+        buildSlider.max = 0;
+        buildSlider.value = 0;
+        sliderLabel.textContent = totalCount > 0 ? "Build disabled in Show All mode" : "No pairs selected";
+        counterLabel.textContent = `Pairs shown: ${{visibleCount}}`;
+      }}
+    }}
+
+    function render(resetBuildCounter) {{
+      const selectedPairs = getSelectedPairs();
+      const buildCounts = buildExponentialCounts(selectedPairs.length);
+
+      if (mode === "build") {{
+        if (resetBuildCounter) {{
+          buildStepIdx = 0;
+        }}
+        if (buildCounts.length === 0) {{
+          buildStepIdx = 0;
+        }} else {{
+          buildStepIdx = Math.max(0, Math.min(buildStepIdx, buildCounts.length - 1));
+        }}
+      }} else {{
+        buildStepIdx = Math.max(buildCounts.length - 1, 0);
+      }}
+
+      const visibleCount = mode === "build"
+        ? (buildCounts.length ? buildCounts[buildStepIdx] : 0)
+        : selectedPairs.length;
+      const visiblePairs = selectedPairs.slice(0, visibleCount);
+      const traces = buildTraces(visiblePairs);
+      const layout = JSON.parse(JSON.stringify(baseFig.layout || {{}}));
+      const config = {{ responsive: true }};
+
+      Plotly.react(plotDiv, traces, layout, config);
+      setModeButtons();
+      setCategoryButtons();
+      updateSlider(buildCounts, visibleCount, selectedPairs.length);
+    }}
+
+    showAllButton.addEventListener("click", () => {{
+      stopAutoBuild();
+      mode = "all";
+      render(false);
+    }});
+
+    buildButton.addEventListener("click", () => {{
+      stopAutoBuild();
+      mode = "build";
+      buildStepIdx = 0;
+      render(false);
+      startAutoBuild();
+    }});
+
+    buildSlider.addEventListener("input", (event) => {{
+      stopAutoBuild();
+      mode = "build";
+      buildStepIdx = Number(event.target.value || 0);
+      render(false);
+    }});
+
+    if (showCategories) {{
+      categoryRow.style.display = "flex";
+      categoryPayloads.forEach((payload, idx) => {{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "category-button active";
+        button.textContent = payload.label;
+        button.addEventListener("click", () => {{
+          if (selectedCategoryIdxs.has(idx)) {{
+            selectedCategoryIdxs.delete(idx);
+          }} else {{
+            selectedCategoryIdxs.add(idx);
+          }}
+          render(mode === "build");
+          if (mode === "build") {{
+            startAutoBuild();
+          }}
+        }});
+        categoryButtons.appendChild(button);
+      }});
+    }}
+
+    render(false);
+  </script>
+</body>
+</html>
+"""
+
+        with open(output_html, "w", encoding="utf-8") as f:
+            f.write(html_str)

@@ -38,15 +38,17 @@ This script is organized into five main sections and can be used with either
    5.4. Export an interactive HTML summary linking the validation-condition
         view, psychometric functions, and threshold regression.
         
-If this is run on hpc, use runPython_wPytorch.sbatch 
+If this is run on hpc, use runPython_cpu.sbatch 
 
 #!/bin/bash
-#SBATCH --job-name=cross_validate_find_opt_decay_rate
 #SBATCH --output=slurm_scripts/slurm%j.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=fh862@sas.upenn.edu
-#SBATCH -p gpu -N1 -G1 --constraint=h100 --cpus-per-task=4 --mem-per-cpu=20G
-#SBATCH --time=00:30:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=100GB
+#SBATCH --time=30:00:00
 
 """
 
@@ -64,7 +66,7 @@ import os
 from analysis.MOCS_thresholds import compute_Wishart_based_pCorrect_atMOCS
 from dconfig.config_4Ddata import DatasetConfig_4D_MOCS
 from dconfig.config_6Ddata import DatasetConfig_6D
-from core.model_predictions import rerun_model_pred_wExisting_model
+from core.model_predictions import wishart_model_pred, rerun_model_pred_wExisting_model
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     intervals_overlap, find_btst_dataset_within_CI
 from plotting.wishart_plotting import PlotSettingsBase 
@@ -91,12 +93,12 @@ base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
 #'ELPS_analysis/Simulation_DataFiles/MOCS/gt_CIE'
 #'Fitted_weibull_psychometric_func_Isoluminant plane_240totalTrials_25refs_MOCS_subCIE1994.pkl'
 
-subN = 1
+subN = 2
 decay_rate = 0.4
 # choose one dataset
-dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN, decay_rate = decay_rate)
+#dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN, decay_rate = decay_rate)
 #dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
-#dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
 
 #print out summary
 dcfg.print_summary()
@@ -130,10 +132,7 @@ if key_gridMOCS in vars_dict:
 else:
     # Retrieve the variables of interest from the loaded dictionary
     # - Model predictions using the Wishart process
-    if dcfg.stim_dims == 2:
-        model_pred_existing = deepcopy(vars_dict['model_pred_Wishart'])
-    else:
-        model_pred_existing = deepcopy(vars_dict['model_pred_Wishart_grid_isoluminant'])
+    model_pred_existing = deepcopy(vars_dict['model_pred_Wishart'])
     grid_MOCS = MOCS['xref_unique']
 
     # Use the helper function to recompute model predictions and transformed grid
@@ -206,13 +205,37 @@ for idx, r in enumerate(trange(nBtst, desc="Loading bootstraps")):
         thres_Wishart_based_atMOCS_r = vars_dict_btst["thres_Wishart_based_atMOCS"]
 
     else:
-        # Otherwise, recompute Wishart predictions at the MOCS validation references
-        if dcfg.stim_dims == 2:
-            model_pred_r = deepcopy(vars_dict_btst['model_pred_Wishart'])
-        else:
-            model_pred_r = deepcopy(vars_dict_btst['model_pred_Wishart_grid_isoluminant'])
         grid_MOCS_r = MOCS["xref_unique"]  # unique MOCS reference locations
 
+        # Otherwise, recompute Wishart predictions at the MOCS validation references
+        try:
+            model_pred_r = deepcopy(vars_dict_btst['model_pred_Wishart'])
+            print('Using cached Wishart prediction object from the bootstrap results.')
+        except KeyError:
+            print(
+                "Cached Wishart prediction object not found. "
+                "Building the object ..."
+            )
+            model = deepcopy(vars_dict_btst['model'])
+            W_est = vars_dict_btst['W_est']
+            # Compute the covariance matrices ('Sigmas') at each point in the grid using 
+            # the model's compute_U function. 
+            Sigmas_noise_grid = model.compute_Sigmas(
+                model.compute_U(W_est, grid_MOCS_r[(None,) * (dcfg.stim_dims - 1)])
+                )
+            
+            # Initialize the Wishart model prediction using various parameters.
+            model_pred_r = wishart_model_pred(model, vars_dict_btst['opt_params'],
+                                              vars_dict_btst['W_INIT_KEY'],
+                                              vars_dict_btst['OPT_KEY'],
+                                              vars_dict_btst['W_init'],
+                                              W_est, Sigmas_noise_grid,
+                                              color_thres_data, 
+                                              target_pC= vars_dict_btst['target_pC'],
+                                              ngrid_bruteforce = 1000,
+                                              bds_bruteforce = dcfg.bds_bruteforce
+                                              )
+            
         # Re-run prediction using the existing fitted model, evaluated at MOCS grid
         # (also returns transformed grid in other spaces if needed; ignored here)
         model_pred_Wishart_MOCS_r = rerun_model_pred_wExisting_model(
@@ -386,9 +409,10 @@ if not flag_running_on_hpc:
 if not flag_running_on_hpc:  
     # Set up output directory for saving figures
     input_fileDir_fits = deepcopy(dcfg.mocs_fit_dir)
-    output_figDir_fits = os.path.join(input_fileDir_fits.replace('Experiment_DataFiles', 
-                                                                 'Experiment_FigFiles'),
-                                      'comp_validation')
+    output_figDir_fits = os.path.join(os.path.dirname(input_fileDir_fits).replace(\
+                                                    'Experiment_DataFiles', 
+                                                    'Experiment_FigFiles'),
+                                          'comp_validation')
     os.makedirs(output_figDir_fits, exist_ok=True)
     
     # ---------------------------------------------------------------------------------
@@ -540,8 +564,8 @@ if not flag_running_on_hpc:
         ax_n.errorbar(MOCS['vecLen_at_targetPC_Wishart'][n], slc_PMF_MOCS.target_pC,
                       xerr=vecLen_at_targetPC_Wishart_err[n][:, None],
                       c=cmap_n, lw= 3, capsize=4)
-        #fig_n.savefig(os.path.join(output_figDir_fits, f"{fig_name_n[:-4]}.pdf"),
-        #              bbox_inches='tight')
+        fig_n.savefig(os.path.join(output_figDir_fits, f"{fig_name_n[:-4]}.pdf"),
+                      bbox_inches='tight')
         plt.show()
     
     #%%

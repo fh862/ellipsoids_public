@@ -7,6 +7,7 @@ Created on Fri Aug  2 10:26:03 2024
 """
 
 import numpy as np
+from analysis.ellipses_tools import covMat_to_ellParamsQ
 
 #%%
 def UnitCircleGenerate_3D(nTheta, nPhi):
@@ -186,6 +187,83 @@ def EllipsoidSurfaceMesh(radii, center, eigenVectors, nu = 120, nv = 240):
     X[:, -1], Y[:, -1], Z[:, -1] = X[:, 0], Y[:, 0], Z[:, 0]
 
     return X, Y, Z
+
+def find_inner_outer_surfaces(cov_mats, center=None, nTheta=240, nPhi=120):
+    """
+    Compute inner and outer bootstrap-envelope surfaces for common-center
+    3D ellipsoids.
+
+    This is the 3D analogue of ``find_inner_outer_contours`` for the common
+    reference case. The 2D version can use polygon boolean operations because
+    sampled ellipses become simple planar polygons. In 3D, the equivalent
+    mesh boolean union/intersection is much more brittle: triangle meshes need
+    watertight topology, robust handling of near-tangent intersections, and
+    usually a heavier geometry backend. Since all ellipsoids share a center,
+    we can instead sample directions on a unit sphere and compute each
+    covariance ellipsoid's radial distance along those directions. The outer
+    surface uses the maximum radius across ellipsoids; the inner surface uses
+    the minimum radius.
+
+    Parameters
+    ----------
+    cov_mats : array_like
+        Covariance matrices for N bootstrap fits. Shape must be (N, 3, 3), or
+        any sequence of 3 x 3 covariance matrices. Each matrix defines the
+        ellipsoid (x - center)^T inv(cov) (x - center) = 1.
+
+    center : array_like, optional
+        Common reference / center for all ellipsoids. If None, the origin is
+        used.
+
+    nTheta : int, optional
+        Number of azimuth samples on the unit sphere.
+
+    nPhi : int, optional
+        Number of polar samples on the unit sphere.
+
+    Returns
+    -------
+    xu, yu, zu : ndarray, shape (nPhi, nTheta)
+        Outer envelope surface coordinates.
+
+    xi, yi, zi : ndarray, shape (nPhi, nTheta)
+        Inner envelope surface coordinates.
+    """
+    cov_mats = np.asarray(cov_mats, dtype=float)
+    if cov_mats.ndim != 3 or cov_mats.shape[-2:] != (3, 3) or cov_mats.shape[0] < 1:
+        raise ValueError("Input must have shape (N, 3, 3), where N >= 1.")
+
+    if center is None:
+        center = np.zeros(3)
+    else:
+        center = np.asarray(center, dtype=float).reshape(3,)
+
+    dirs = UnitCircleGenerate_3D(nTheta, nPhi)
+    dirs_flat = dirs.reshape(-1, 3)
+    radii_by_ellipsoid = np.full((cov_mats.shape[0], dirs_flat.shape[0]), np.nan)
+
+    for i, cov in enumerate(cov_mats):
+        if not np.allclose(cov, cov.T):
+            raise ValueError(f"Covariance matrix at index {i} is not symmetric.")
+        eigenvalues, *_ = covMat_to_ellParamsQ(cov)
+        if np.any(eigenvalues <= 0):
+            raise ValueError(f"Covariance matrix at index {i} is not positive definite.")
+        Q = np.linalg.inv(cov)
+        denom = np.einsum("ni,ij,nj->n", dirs_flat, Q, dirs_flat)
+        if np.any(denom <= 0):
+            raise ValueError("Encountered a non-positive ellipsoid radial denominator.")
+        radii_by_ellipsoid[i] = 1.0 / np.sqrt(denom)
+
+    r_outer = np.max(radii_by_ellipsoid, axis=0).reshape(dirs.shape[:2])
+    r_inner = np.min(radii_by_ellipsoid, axis=0).reshape(dirs.shape[:2])
+
+    outer_pts = center[None, None, :] + r_outer[..., None] * dirs
+    inner_pts = center[None, None, :] + r_inner[..., None] * dirs
+
+    xu, yu, zu = outer_pts[..., 0], outer_pts[..., 1], outer_pts[..., 2]
+    xi, yi, zi = inner_pts[..., 0], inner_pts[..., 1], inner_pts[..., 2]
+
+    return xu, yu, zu, xi, yi, zi
 
 def ellipsoid_fit(X, lambda_reg = 0):
     """

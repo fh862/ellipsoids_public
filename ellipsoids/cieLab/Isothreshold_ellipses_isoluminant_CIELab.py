@@ -20,6 +20,7 @@ The logic:
 import os
 from scipy.io import loadmat
 import numpy as np
+import colour
 import matplotlib.pyplot as plt
 from dataclasses import replace
 import dill as pickled
@@ -39,7 +40,8 @@ stim_dim = 2
 color_thres_data = color_thresholds(stim_dim, base_dir, plane_2D = 'Isoluminant plane')
 
 # Load monitor-specific calibration and transformation matrices
-color_thres_data.load_transformation_matrix(file_date = "02012026")
+cal_date = "02012026"
+color_thres_data.load_transformation_matrix(file_date = cal_date)
 M_RGBTo2DW = color_thres_data.M_RGBTo2DW  # RGB → 2D Wishart space
 M_2DWToRGB = color_thres_data.M_2DWToRGB  # 2D Wishart space → RGB
 
@@ -70,7 +72,7 @@ color_diff_algorithm = 'CIE2000'  # Options: 'CIE2000', 'CIE1994', 'CIE1976'
 
 # Define 1-JND criterion in ΔE units
 # (larger for CIE1976 to roughly match perceptual scale)
-deltaE_1JND = 2.5
+deltaE_1JND = 1.75 #2.5
 
 # Angular resolution used to render fitted isothreshold ellipses
 nTheta = 200 
@@ -83,10 +85,23 @@ scaler = 1
 #  derive CIELab predicted thresholds
 # -----------------------------------------------------------
 # Background RGB value used for Lab conversion (neutral gray)
-background_RGB = np.array([0.2390, 0.3086, 0.4876]) #[0.5, 0.5, 0.5]
+#background = np.array([0.2357, 0.2969, 0.4673]) #RGB
+background = np.array([0.2649, 0.2811, 85.6234] ) #xyY
 
 # Initialize simulator for CIELab-based threshold computations restricted to the isoluminant plane
-sim_thres_CIELab = SimThresCIELab(background_RGB, plane_2D_list=['Isoluminant plane'])
+sim_thres_CIELab = SimThresCIELab(background, 
+                                  plane_2D_list=['Isoluminant plane'],
+                                  file_date= cal_date,
+                                  flag_force_Lstar50=True,
+                                  background_space = "xyY"
+                                  )
+if sim_thres_CIELab.flag_force_Lstar50:
+    if sim_thres_CIELab.background_space.lower() == 'xyy':
+        background_RGB = sim_thres_CIELab.M_XYZToRGB @ colour.xyY_to_XYZ(background)
+    else:
+        background_RGB = background
+    bg_lab, _ = sim_thres_CIELab.convert_rgb_lab(background_RGB)
+    print(f'rescaled lab: {np.round(bg_lab, 2)}')
 
 # Preallocate arrays for threshold computation and ellipse fitting
 base_size  = (nGridPts_ref, nGridPts_ref)
@@ -170,13 +185,16 @@ ax1.grid(True, alpha = 0.3)
 plt.tight_layout()
 plt.show()
 # Save the figure as a PDF
-if not np.array_equal(background_RGB, np.array([0.5, 0.5, 0.5])):
-    str_cr = f"_cr_{background_RGB[0]:.4f}_{background_RGB[1]:.4f}_{background_RGB[2]:.4f}"
+space_tag = "xyY" if sim_thres_CIELab.background_space.lower() == "xyy" else "RGB"
+str_cr = f"_cr_{space_tag}_{background[0]:.4f}_{background[1]:.4f}_{background[2]:.4f}"
+if sim_thres_CIELab.flag_force_Lstar50:
+    str_cr += '_bgLstar_fixed50'
 else:
-    str_cr = ''
+    str_cr += ''
 fig1.savefig(os.path.join(output_figDir, f"{color_diff_algorithm}_derived_threshold"+\
                           f"_contours_isoluminant_plane_Wspace_grid{nGridPts_ref}{str_cr}.pdf"))
 
+#%%
 # -----------------------------------------------------------
 # plot in 3D
 # -----------------------------------------------------------

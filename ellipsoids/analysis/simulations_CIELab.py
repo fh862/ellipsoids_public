@@ -29,20 +29,33 @@ required_file_dir = "/Users/fangfang/Documents/MATLAB/projects/ColorEllipsoids/F
     
 #%%
 class SimThresCIELab:
-    def __init__(self, background_rgb, plane_2D_list = ['GB plane', 'RB plane', 'RG plane'], 
-                 file_date = "02242025"):
+    def __init__(self, background, plane_2D_list = ['GB plane', 'RB plane', 'RG plane'], 
+                 file_date = "02242025", flag_force_Lstar50 = False,
+                 background_space = "rgb"):
         """
         Parameters:
-        - background_RGB (array; 3 x 1): Background RGB values used for normalization.
-        - T_CONES (array; 3 x N): Matrix of cone sensitivities for absorbing photons at different wavelengths.
-        - monitor_Spd (array; N x 3): Spectral power distribution of the monitor.
-        - M_LMS_TO_XYZ (array; 3 x 3): Matrix to convert LMS cone responses to CIEXYZ.
+
         """
         self.file_data = file_date
-        self.background_rgb = background_rgb
-
+        self.background_space = background_space.lower()
+        if self.background_space not in {"rgb", "xyy"}:
+            raise ValueError(
+                f"background_space must currently be 'rgb' or 'xyY'; got {background_space!r}."
+            )
+        # Copy the caller-provided background so any later in-place updates to
+        # the class-owned white point do not mutate external variables.
+        self.background = np.asarray(background, dtype=float).copy()
+        self.background_rgb = self.background if self.background_space == "rgb" else None
+        self.background_xyY = self.background if self.background_space == "xyy" else None
+        
         #load T_cones, B_monitor, M_LMSToXYZ
         self._load_required_files(file_date)
+                
+        # compute transformation matrices from XYZ -> RGB and vice versa
+        self._compute_transformation_matrices()
+        
+        self.flag_force_Lstar50 = flag_force_Lstar50
+        self.compute_bg_xyY()
         
         #number of selected planes
         # Validate plane_2D_list
@@ -59,14 +72,39 @@ class SimThresCIELab:
             self.varying_dims = [[0,1]] #treat it as RG plane with the third dimension fixed at 1
     
     def _load_required_files(self, file_date):
-        """Internal helper to load all required .mat files."""
+        """
+        Load the calibration tables needed for RGB/SPD/XYZ conversions.
+
+        The loaded arrays define the display pipeline at the spectral level:
+            RGB --(B_MONITOR)--> spectral power distribution (SPD)
+            SPD --(T_xyz)--> CIE 1931 XYZ tristimulus values
+
+        Parameters
+        ----------
+        file_date : str
+            Calibration tag used to select the measured monitor-primary file.
+        """
         sys.path.append(required_file_dir)
         os.chdir(required_file_dir)
+
+        # Measured monitor spectral primaries for the selected calibration date.
+        # Shape: (201, 3) = (wavelength samples, R/G/B primaries).
+        self.B_MONITOR = loadmat(f'B_monitor_dell_{file_date}.mat')['B_monitor']
+
+        # CIE 1931 XYZ color matching functions on the same wavelength grid.
+        # Shape: (3, 201) = (Xbar/Ybar/Zbar, wavelength samples).
+        self.T_xyz = loadmat('T_xyz_CIE1931.mat')['T_xyz']
         
-        #use the primaries of our monitor 
-        self.T_CONES = loadmat('T_cones_finer.mat')['T_cones']       # (3, 201)
-        self.B_MONITOR = loadmat(f'B_monitor_dell_{file_date}.mat')['B_monitor']  # (201, 3)
-        self.M_LMS_TO_XYZ = loadmat('M_LMSToXYZ.mat')['M_LMSToXYZ']  # (3, 3)
+    def _compute_transformation_matrices(self):
+        """ Compute transformation matrice between RGB and XYZ """
+        # Collapse the spectral pipeline RGB -> SPD -> XYZ into one 3x3 matrix.
+        # T_xyz:     (3, 201)
+        # B_MONITOR: (201, 3)
+        # Result:    (3, 3), mapping linear RGB directly to XYZ.
+        self.M_RGBToXYZ = self.T_xyz @ self.B_MONITOR
+
+        # Inverse transform used when mapping XYZ coordinates back to display RGB.
+        self.M_XYZToRGB = np.linalg.inv(self.M_RGBToXYZ)
             
     def _validate_plane_list(self, plane_2D_list):
         """Internal method to validate plane_2D_list."""
@@ -74,6 +112,54 @@ class SimThresCIELab:
         if plane_2D_list not in valid_plane_options:
             raise ValueError(f"Invalid plane_2D_list: {plane_2D_list}. "+\
                              "Must be one of {valid_plane_options}.")
+        
+        if self.background_space == "rgb":
+            if self.background_rgb.shape != (3,):
+                raise ValueError(
+                    f"background_rgb must have shape (3,); got {self.background_rgb.shape}."
+                )
+        else:
+            if self.background_xyY.shape != (3,):
+                raise ValueError(
+                    f"background_xyY must have shape (3,); got {self.background_xyY.shape}."
+                )
+            
+    def compute_bg_xyY(self):
+        """
+        Set the background white point used for Lab conversions.
+
+        Two input modes are supported:
+            1. `background_space == "rgb"`:
+               Convert the provided display RGB background to XYZ and then xyY.
+            2. `background_space == "xyy"`:
+               Use the provided xyY background directly.
+
+        If `flag_force_Lstar50` is enabled, the background luminance is
+        rescaled so that the corresponding background color would map to
+        L* = 50 under the resulting Lab reference white.
+        """
+        if self.background_space == "rgb":
+            # Convert the display RGB background into CIE XYZ, then express it
+            # as xyY so it can serve as the Lab reference white.
+            background_XYZ = self.M_RGBToXYZ @ self.background_rgb
+            self.background_xyY = np.asarray(colour.XYZ_to_xyY(background_XYZ))
+        else:
+            # The caller already provided a measured xyY white point.
+            background_XYZ = colour.xyY_to_XYZ(self.background_xyY)
+
+        self.background_xy = self.background_xyY[:2].copy()
+
+        if not self.flag_force_Lstar50:
+            # Default behavior: use the background as-is, with no additional
+            # luminance renormalization.
+            self.background_Yn = 1.0
+        else:
+            # Solve for the white-point luminance that would make this
+            # background land at L* = 50.
+            Y_target = background_XYZ[1]
+            f_target = (50 + 16) / 116
+            self.background_Yn = Y_target / (f_target ** 3)
+            self.background_xyY[2] = self.background_Yn
             
     def get_plane_1slice(self, grid_lb, grid_ub, num_grid_pts,fixed_val, plane_2D):
         """
@@ -154,7 +240,7 @@ class SimThresCIELab:
     def convert_lab_rgb(self, color_Lab):
         """
         Convert a CIELab color value back to RGB, using the inverse of the
-        display pipeline: Lab → XYZ → LMS → RGB.
+        display pipeline: Lab → XYZ → RGB.
         
         Parameters:
         - color_Lab (array; 3, or N,3): Lab color to convert (1D array)
@@ -162,34 +248,24 @@ class SimThresCIELab:
         Returns:
         - color_RGB.T (array; 3, or N,3): RGB values (may need gamma correction or clipping)
         - color_XYZ   (array; 3, or N,3): CIEXYZ intermediate
-        - color_LMS.T (array; 3, or N,3): LMS cone response intermediate
         """
+
+        color_Lab = np.asarray(color_Lab)
+        if color_Lab.shape[-1] != 3:
+            raise ValueError(
+                f"color_Lab must have shape (..., 3) before colour.Lab_to_XYZ; "
+                f"got {color_Lab.shape}."
+            )
+        color_XYZ = colour.Lab_to_XYZ(color_Lab, self.background_xyY)
+        
+        # Map XYZ back to linear display RGB using the inverse calibration matrix.
+        color_RGB = self.M_XYZToRGB @ color_XYZ
     
-        # Step 1: Convert background RGB to SPD, LMS, and XYZ (for whitepoint)
-        background_Spd = self.B_MONITOR @ self.background_rgb
-        background_LMS = self.T_CONES @ background_Spd
-        background_XYZ = self.M_LMS_TO_XYZ @ background_LMS
-
-        # Step 2: Lab → XYZ (requires background whitepoint)
-        background_xyY = colour.XYZ_to_xyY(background_XYZ)
-        color_XYZ = colour.Lab_to_XYZ(color_Lab, background_xyY) #(N,3)
-
-        # Step 3: XYZ → LMS
-        M_XYZ_TO_LMS = np.linalg.inv(self.M_LMS_TO_XYZ)
-        color_LMS = M_XYZ_TO_LMS @ color_XYZ.T
-
-        # Step 4: LMS → RGB
-        T_inv = np.linalg.pinv(self.T_CONES @ self.B_MONITOR)  # Use pseudo-inverse in case it's ill-conditioned
-        color_RGB = T_inv @ color_LMS
-    
-        return color_RGB.T, color_XYZ, color_LMS.T 
+        return color_RGB.T, color_XYZ 
 
     def convert_rgb_lab(self, color_RGB):
         """
-        Convert an RGB color value into the CIELab color space using the monitor's 
-        spectral power distribution (SPD), the background RGB values, cone sensitivities 
-        (T_CONES), and a matrix that converts from LMS (cone responses) to CIEXYZ 
-        color space (M_LMS_TO_XYZ).
+        Convert an RGB color value into the CIELab color space.
     
         Parameters:
         - color_RGB (array; 3, or N,3): RGB color value(s) to be converted.
@@ -198,30 +274,22 @@ class SimThresCIELab:
         Returns:
         - color_Lab (array; 3, or N,3): The converted color(s) in CIELab color space, a 1D array.
         - color_XYZ (array; 3, or N,3): The intermediate CIEXYZ color space representation, a 1D array.
-        - color_LMS (array; 3, or N,3): The LMS cone response representation, a 1D array.
     
         """
-    
-        # Convert background RGB to SPD using the monitor's SPD
-        background_Spd = self.B_MONITOR @ self.background_rgb
-        # Convert background SPD to LMS (cone response)
-        background_LMS = self.T_CONES @ background_Spd
-        # Convert background LMS to XYZ (for use in Lab conversion)
-        background_XYZ = self.M_LMS_TO_XYZ @ background_LMS
         
-        #RGB -> SPD
-        color_Spd = self.B_MONITOR @ color_RGB.T
-        #SPD -> LMS
-        color_LMS = self.T_CONES @ color_Spd
-        #LMS -> XYZ
-        color_XYZ = self.M_LMS_TO_XYZ @ color_LMS
-    
-        #XYZ -> Lab
-        background_xyY = colour.XYZ_to_xyY(background_XYZ)
-    
-        color_Lab = colour.XYZ_to_Lab(color_XYZ.T, background_xyY) 
+        # Convert the input display RGB values directly to XYZ using the
+        # monitor-specific RGB->XYZ calibration matrix.
+        color_XYZ = self.M_RGBToXYZ @ color_RGB.T
+
+        color_XYZ_input = color_XYZ.T
+        if color_XYZ_input.shape[-1] != 3:
+            raise ValueError(
+                f"color_XYZ must have shape (..., 3) before colour.XYZ_to_Lab; "
+                f"got {color_XYZ_input.shape}."
+            )
+        color_Lab = colour.XYZ_to_Lab(color_XYZ_input, self.background_xyY)
         
-        return color_Lab, color_XYZ.T, color_LMS.T
+        return color_Lab, color_XYZ.T
     
     def compute_deltaE(self, ref_RGB, vecDir, vecLen, comp_RGB=None, method='CIE1994'):
         """

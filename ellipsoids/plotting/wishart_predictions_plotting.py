@@ -1384,6 +1384,39 @@ if (plotDiv) {{
                 showlegend=False, hoverinfo = self.st.geo_hover_info
             ))
         return fig
+
+    def add_mesh_wireframe(self, fig, verts, faces, color, width=1, opacity=0.1):
+        """
+        Add the wireframe of a triangle mesh by drawing all unique mesh edges.
+        """
+        verts = np.asarray(verts, float)
+        faces = np.asarray(faces, int)
+        color = self.to_rgb_str(color)
+
+        edges = np.vstack([
+            faces[:, [0, 1]],
+            faces[:, [1, 2]],
+            faces[:, [2, 0]],
+        ])
+        edges = np.unique(np.sort(edges, axis=1), axis=0)
+
+        xs, ys, zs = [], [], []
+        for i, j in edges:
+            xs += [verts[i, 0], verts[j, 0], None]
+            ys += [verts[i, 1], verts[j, 1], None]
+            zs += [verts[i, 2], verts[j, 2], None]
+
+        fig.add_trace(go.Scatter3d(
+            x=xs,
+            y=ys,
+            z=zs,
+            mode="lines",
+            line=dict(color=color, width=width),
+            opacity=opacity,
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+        return fig
     
     def add_ellipsoid_surface(self, fig, X, Y, Z, color_str):
         """Internal helper: add a single ellipsoid surface to `fig`."""

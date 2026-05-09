@@ -124,8 +124,22 @@ for r in trange(nDatasets):
 
     else:
         # Compute covariance matrices on the same fine grid for bootstrap fit r.
-        model_btst = vars_dict_btst["model"]
-        W_btst = vars_dict_btst["W_est"]
+        # Older save files stored the fitted model and best-fit weights as
+        # separate entries (`model`, `W_est`), while newer ones stored both
+        # inside `model_pred_Wishart`. Try the legacy layout first, then the
+        # wrapped-object layout, and fail with a clear error if neither exists.
+        try:
+            model_btst = deepcopy(vars_dict_btst["model"])
+            W_btst = vars_dict_btst["W_est"]
+        except KeyError:
+            try:
+                model_btst = deepcopy(vars_dict_btst["model_pred_Wishart"])
+                W_btst = model_btst.W_est
+            except KeyError as exc:
+                raise KeyError(
+                    "Bootstrap save file must contain either (`model`, `W_est`) "
+                    "or `model_pred_Wishart`."
+                ) from exc
 
         Sigmas_noise_grid_btst = model_btst.compute_Sigmas(
             model_btst.compute_U(W_btst, grid_fine)

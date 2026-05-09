@@ -177,6 +177,32 @@ def extract_between_patterns(str_list, str_prefix, str_suffix):
     pattern = re.escape(str_prefix) + r'(.*?)' + re.escape(str_suffix)
     return [re.search(pattern, s).group(1) if re.search(pattern, s) else None for s in str_list]
 
+
+def values_disagree(existing, loaded):
+    """
+    Return True when two values appear to disagree.
+    """
+    if type(existing) is not type(loaded):
+        return True
+
+    if isinstance(existing, np.ndarray):
+        return not np.array_equal(existing, loaded, equal_nan=True)
+
+    if isinstance(existing, (list, tuple)):
+        if len(existing) != len(loaded):
+            return True
+        return any(values_disagree(x, y) for x, y in zip(existing, loaded))
+
+    if isinstance(existing, dict):
+        if existing.keys() != loaded.keys():
+            return True
+        return any(values_disagree(existing[k], loaded[k]) for k in existing)
+
+    try:
+        return existing != loaded
+    except Exception:
+        return False
+
 #%%
 class load_expt_data:
     def get_all_sessions_file_names(subN, nSessions, path_str, 

@@ -46,7 +46,8 @@ class DatasetConfig_4D:
     # stimulus dimension and rgb of adapting points
     stim_dims: int = 2
     psyfield_dims: int = 4
-    bg_rgb: Optional[jnp.ndarray] = None
+    bg_rgb: Optional[np.ndarray] = None
+    cr_xyY_measured: Optional[np.ndarray] = None
 
     # optional fields for simulated data
     coloralg: Optional[str] = None
@@ -133,14 +134,17 @@ class DatasetConfig_4D:
             '_gray': dict(
                 file_date='10062025',
                 bg_rgb=np.array([0.6014, 0.6200, 0.6234]),
+                cr_xyY_measured=np.array([0.3125, 0.3294, 84.3396]),
             ),
             '_blue': dict(
                 file_date='10062025',
                 bg_rgb=np.array([0.4741, 0.6123, 0.9673]),
+                cr_xyY_measured=np.array([0.2649, 0.2811, 85.6234]),
             ),
             '_orange': dict(
                 file_date='02012026',
                 bg_rgb=np.array([0.7622, 0.6004, 0.3853]),
+                cr_xyY_measured=np.array([0.3537, 0.3662, 84.4953]),
             ),
         }
 
@@ -166,6 +170,7 @@ class DatasetConfig_4D:
             adaptation_cond_str=adaptation_cond_str,
             exptCond='_4dExpt_Isoluminant plane',
             bg_rgb=varyingbg_cfg['bg_rgb'],
+            cr_xyY_measured=varyingbg_cfg['cr_xyY_measured'],
             num_grid_pts=7,
             bds_bruteforce=[0.0005, 0.3],
         )

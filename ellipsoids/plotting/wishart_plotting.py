@@ -73,6 +73,7 @@ class PlotBasis3DSettings(PlotSettingsBase):
     xyzlim: List[float] = field(default_factory=lambda: [-1.05, 1.05])
     fig_name: str = 'Chebyshev_basis_function'
     cmap: str = 'PRGn'
+    cmap_bds: List[float] = field(default_factory=lambda: [-1, 1])
     flag_remake_cmap: bool = False
     view_anlge: Tuple[float, float] = (20, -75)
     
@@ -363,12 +364,12 @@ class WishartModelBasicsVisualization(PlottingTools):
 
         Parameters
         ----------
-        grid : np.array, shape (n, n, 2)
+        grid : np.array, shape (n_rows, n_cols, 2)
             Grid of reference locations in W units (2D plane).
-        cov_fine : np.array, shape (N, N, 2, 2)
+        cov_fine : np.array, shape (N_rows, N_cols, 2, 2)
             Covariance matrices on a finely sampled grid. These are used for
             the heatmaps on the left.
-        cov_grid : np.array, shape (n, n, 2, 2)
+        cov_grid : np.array, shape (n_rows, n_cols, 2, 2)
             Covariance matrices on a coarser grid. These are used to plot the
             ellipses on the right.
         settings : PlotCovMatSettings
@@ -388,8 +389,15 @@ class WishartModelBasicsVisualization(PlottingTools):
         else: cmap = settings.cmap
 
         # Number of finely sampled and coarsely sampled grid points.
-        num_grid_fine = cov_fine.shape[0]
-        num_grid = cov_grid.shape[0]
+        num_grid_fine_rows, num_grid_fine_cols = cov_fine.shape[:2]
+        num_grid_rows, num_grid_cols = cov_grid.shape[:2]
+
+        if grid.shape[:2] != (num_grid_rows, num_grid_cols):
+            raise ValueError(
+                "`grid` and `cov_grid` must share the same first two dimensions. "
+                f"Got grid.shape[:2]={grid.shape[:2]} and "
+                f"cov_grid.shape[:2]={cov_grid.shape[:2]}."
+            )
 
         # Convert tick locations from W units (model space) to N units (plot space).
         ticks_N = color_thresholds.W_unit_to_N_unit(settings.ticks_W)
@@ -414,6 +422,7 @@ class WishartModelBasicsVisualization(PlottingTools):
             for j in range(ndims):      
                 # Heatmap for the (i, j) entry of the covariance matrix across the fine grid.
                 im = ax[i, j].imshow(cov_fine[:,:,i,j], 
+                                     origin='lower',
                                      cmap = cmap,
                                      vmin = cmap_bds[0], 
                                      vmax = cmap_bds[1]
@@ -423,21 +432,23 @@ class WishartModelBasicsVisualization(PlottingTools):
                 if settings.flag_add_horz_vert_lines:
                     
                     # Extract the selected coarse-grid point in W units.
-                    grid_slc = grid[num_grid-1-settings.slc_idx_dim1, settings.slc_idx_dim2]
+                    grid_slc = grid[settings.slc_idx_dim1, settings.slc_idx_dim2]
                     
                     # Map from W units to N units and then to pixel indices of the fine grid.
-                    grid_norm = color_thresholds.W_unit_to_N_unit(grid_slc)*num_grid_fine
+                    grid_norm = color_thresholds.W_unit_to_N_unit(grid_slc) * np.array(
+                        [num_grid_fine_cols, num_grid_fine_rows]
+                    )
                     xv_grid, yv_grid = grid_norm
 
                     # Horizontal line through the selected point.
-                    ax[i, j].plot([0, num_grid_fine],
+                    ax[i, j].plot([0, num_grid_fine_cols],
                                   [yv_grid, yv_grid],
                                   c = settings.lc_grid,
                                   lw = settings.lw_grid
                                   )
                     # Vertical line through the selected point.
                     ax[i, j].plot([xv_grid, xv_grid],
-                                  [0, num_grid_fine], 
+                                  [0, num_grid_fine_rows], 
                                   c = settings.lc_grid,
                                   lw = settings.lw_grid
                                   )
@@ -447,18 +458,23 @@ class WishartModelBasicsVisualization(PlottingTools):
                 # Set axis ticks and labels in either W units or N units.
                 if settings.flag_rescale_axes_label:
                     self._update_axes_labels(ax[i,j], 
-                                             ticks_N*num_grid_fine,
+                                             ticks_N * num_grid_fine_cols,
+                                             ticks_N,
+                                             ticks_N * num_grid_fine_rows,
                                              ticks_N, 
                                              nsteps= 1
                                              )
                 else:
                     self._update_axes_labels(ax[i,j], 
-                                             ticks_N*num_grid_fine,
+                                             ticks_N * num_grid_fine_cols,
+                                             settings.ticks_W, 
+                                             ticks_N * num_grid_fine_rows,
                                              settings.ticks_W, 
                                              nsteps = 1
                                              )  
                 # Restrict to the full fine-grid extent.
-                self._update_axes_limits(ax[i, j], [0, num_grid_fine - 1])
+                ax[i, j].set_xlim(0, num_grid_fine_cols - 1)
+                ax[i, j].set_ylim(0, num_grid_fine_rows - 1)
 
                 # Title for each covariance component (e.g., σ_x², σ_xy, σ_y²).
                 ax[i, j].set_title(settings.heatmap_title_list[i][j])
@@ -479,21 +495,17 @@ class WishartModelBasicsVisualization(PlottingTools):
         # (replacing the four deleted axes).
         ax_ell = fig.add_subplot(1, 2, 2)  
         # Loop over the coarse grid and plot ellipses for each covariance.
-        for pp in range(num_grid):
-            for qq in range(num_grid):
-                #index is flipped so it starts from left to right and top to down
-                row = num_grid - 1 - pp
-                col = qq
-                
+        for row in range(num_grid_rows):
+            for col in range(num_grid_cols):
                 # Choose ellipse color: either a single color or a per-cell colormap.
                 if isinstance(settings.cmap_ell, str):
                     cmap_ell = settings.cmap_ell
                 else:
-                    cmap_ell = settings.cmap_ell[num_grid-1-pp,qq]
+                    cmap_ell = settings.cmap_ell[row, col]
                 
                 # Only plot ellipses up to and including the selected slice index.
-                if pp < settings.slc_idx_dim1 or (pp == settings.slc_idx_dim1 \
-                                                 and qq <= settings.slc_idx_dim2):
+                if row < settings.slc_idx_dim1 or (row == settings.slc_idx_dim1 \
+                                                 and col <= settings.slc_idx_dim2):
                     viz.plot_ellipse(ax_ell,
                                      grid[row,col],
                                      cov_grid[row,col]* settings.scaler_ell,
@@ -512,7 +524,7 @@ class WishartModelBasicsVisualization(PlottingTools):
         # Show the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.925, bottom=0.2)
         #plt.show()
-        fig_counter = settings.slc_idx_dim1*num_grid+settings.slc_idx_dim2
+        fig_counter = settings.slc_idx_dim1 * num_grid_cols + settings.slc_idx_dim2
         fig_name = f"{settings.fig_name}_{fig_counter:02d}"
         if settings.fig_dir and self.save_fig:
             self._save_figure(fig, fig_name)
@@ -561,7 +573,8 @@ class WishartModelBasicsVisualization(PlottingTools):
                 zg_2d = chebval2d(xg, yg, cg)
                 
                 # Display the result as an image in the corresponding subplot.
-                ax[i, j].imshow(zg_2d, cmap = settings.cmap, 
+                ax[i, j].imshow(zg_2d, origin='lower',
+                                  cmap = settings.cmap, 
                                   vmin = settings.cmap_bds[0], 
                                   vmax = settings.cmap_bds[1])
                 # Reset the coefficient for the next iteration.
@@ -605,6 +618,13 @@ class WishartModelBasicsVisualization(PlottingTools):
 
         """
         colormap = plt.get_cmap(settings.cmap)
+        if settings.cmap_bds:
+            cmap_bds = settings.cmap_bds
+        else:
+            max_abs_val = float(max(abs(np.min(M)), abs(np.max(M))))
+            cmap_bds = [-max_abs_val, max_abs_val]
+        cmap_min, cmap_max = cmap_bds
+        cmap_span = cmap_max - cmap_min
         
         nbins = M.shape[0]  # Number of bins (slices) in the third dimension.
         ndim1 = M.shape[-2]
@@ -616,10 +636,11 @@ class WishartModelBasicsVisualization(PlottingTools):
                                    subplot_kw={'projection': '3d'})
             for i in range(ndim1):
                 for j in range(ndim2): 
-                    max_val = np.max([-np.min(M), np.max(M)])
+                    normalized = (M[:, :, l, i, j] - cmap_min) / (cmap_span + 1e-10)
+                    normalized = np.clip(normalized, 0, 1)
                     # Plot the basis functions.
                     ax[i, j].plot_surface(XG[:,:,l], ZG[:,:,l], YG[:,:,l],\
-                        facecolors= colormap(((M[:,:,l,i,j] + max_val)/ (2*max_val+1e-10))),
+                        facecolors=colormap(normalized),
                         rstride=1, cstride=1)
                     # Set aspect ratio and limits for each subplot.
                     self._update_axes_labels(ax[i, j], [], [],

@@ -497,7 +497,7 @@ class color_thresholds():
         # Always clip (either tiny numerical drift or true out-of-gamut)    
         return np.clip(rgb, 0.0, 1.0)
     
-    def W3D_to_cc(self, W3D, ambient_lms, bg_lms):
+    def W3D_to_cc(self, W3D, bg_lms, ambient_lms = np.zeros((3,))):
         """
         Convert 3D model-space coordinates to cone-contrast coordinates.
 
@@ -557,7 +557,7 @@ class color_thresholds():
 
         return cc[0] if was_1d else cc
     
-    def cc_to_W3D(self, cc, ambient_lms, bg_lms):
+    def cc_to_W3D(self, cc, bg_lms, ambient_lms = np.zeros((3,))):
         """
         Convert cone-contrast coordinates to 3D model-space coordinates.
 

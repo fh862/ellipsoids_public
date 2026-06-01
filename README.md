@@ -91,6 +91,14 @@ from analysis.color_thres import color_thresholds
 
 ---
 
+## Related repositories
+
+Code that builds directly on this repository:
+
+- **[BrainardLab/wppmpy_public](https://github.com/BrainardLab/wppmpy_public)** — public toolbox and illustrative examples accompanying the WPPM, including additional analysis notebooks and AEPsych-based experiment runner code.
+
+---
+
 ## Repository structure
 
 | Directory | Contents |

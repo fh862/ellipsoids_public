@@ -79,7 +79,7 @@ else:
     # Example path:
     # '/Volumes/T9/.../ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits/'
     # Example filename:
-    # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.5_nBasisDeg5.pkl'
+    # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.4_nBasisDeg5.pkl'
 
     input_fileDir_fits, file_name_fits = select_file_and_get_path()
     # Extract subject number (e.g., 'sub1' → 1)
@@ -442,7 +442,7 @@ if not flag_running_on_hpc:
     fig1, ax1 = plt.subplots(1, 1, figsize= (3.75, 3.75), dpi=plt_st.dpi)
     #plot the confidence interval
     for n in range(nPts_sDKL_circle+1):
-        if n == 0: cm_n='gray'
+        if n == nPts_sDKL_circle: cm_n='gray'
         else: cm_n = color_thres_data.W2D_to_rgb(ref_pts_W_org[0,n-1])
         add_CI_ellipses(ell_min_W[n], ell_max_W[n], cm = cm_n, alpha = 0.4, ax = ax1)
 
@@ -453,7 +453,7 @@ if not flag_running_on_hpc:
     fig2, ax2 = plt.subplots(1, 1, figsize= (3.75, 3.75), dpi=plt_st.dpi)
     #plot the confidence interval
     for n in range(nPts_sDKL_circle+1):
-        if n == 0: cm_n='gray'
+        if n == nPts_sDKL_circle: cm_n='gray'
         else: cm_n = color_thres_data.W2D_to_rgb(ref_pts_W_org[0,n-1])
         add_CI_ellipses(ell_min_sDKL[n], ell_max_sDKL[n], cm = cm_n, alpha = 0.4, ax = ax2)
         

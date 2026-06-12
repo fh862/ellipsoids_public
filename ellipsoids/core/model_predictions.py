@@ -554,7 +554,7 @@ class wishart_model_pred():
     
     #%%
     @staticmethod
-    def compute_Mahalanobis_distance_one_pair(xref, x1, Uref, U1):
+    def compute_Mahalanobis_distance_one_pair(xref, x1, sigma_ref, sigma_x1):
         """
         Computes the Mahalanobis distance between two points with associated covariance matrices.
     
@@ -564,9 +564,9 @@ class wishart_model_pred():
             A reference point of shape (ndims,).
         x1 : jnp.ndarray
             A comparison point of shape (ndims,).
-        Uref : jnp.ndarray
+        sigma_ref : jnp.ndarray
             Covariance matrix of the reference point, shape (ndims, ndims).
-        U1 : jnp.ndarray
+        sigma_x1 : jnp.ndarray
             Covariance matrix of the comparison point, shape (ndims, ndims).
     
         Returns:
@@ -579,12 +579,12 @@ class wishart_model_pred():
         - The Mahalanobis distance incorporates the covariance structure of the points, making it
           suitable for measuring distances in the presence of correlated variables.
         - The computation is based on the combined covariance matrix:
-            sigma_avg = (Uref + U1) / 2
+            sigma_avg = (sigma_ref + sigma_x1) / 2
         - If the covariance matrices are singular or ill-conditioned, the method may fail unless
           handled explicitly (e.g., using pseudo-inverse instead of inverse).
         """
         # Compute the average covariance matrix between the two points
-        sigma_avg = (Uref + U1) / 2
+        sigma_avg = (sigma_ref + sigma_x1) / 2
         
         # Compute the difference vector between the two points
         delta = xref - x1
@@ -597,7 +597,7 @@ class wishart_model_pred():
         
         return d_M
     
-    def compute_Mahalanobis_distance_batch(self, xref_all, x1_all, Uref_all, U1_all):
+    def compute_Mahalanobis_distance_batch(self, xref_all, x1_all, sigma_ref_all, sigma_x1_all):
         """
         Computes the Mahalanobis distances for a batch of reference and comparison points,
         each with their associated covariance matrices.
@@ -608,9 +608,9 @@ class wishart_model_pred():
             Batch of reference points, shape (N, ndims).
         x1_all : jnp.ndarray
             Batch of comparison points, shape (N, ndims).
-        Uref_all : jnp.ndarray
+        sigma_ref_all : jnp.ndarray
             Batch of covariance matrices for the reference points, shape (N, ndims, ndims).
-        U1_all : jnp.ndarray
+        sigma_x1_all : jnp.ndarray
             Batch of covariance matrices for the comparison points, shape (N, ndims, ndims).
         
         Returns:
@@ -631,7 +631,7 @@ class wishart_model_pred():
         self.mahalanobis_distances = jax.vmap(
             self.compute_Mahalanobis_distance_one_pair,
             in_axes=(0, 0, 0, 0)
-        )(xref_all, x1_all, Uref_all, U1_all)
+        )(xref_all, x1_all, sigma_ref_all, sigma_x1_all)
     
 #%%
 def rerun_model_pred_wExisting_model(grid, model_pred, color_thres_data, 

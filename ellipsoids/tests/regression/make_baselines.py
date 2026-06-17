@@ -1,5 +1,5 @@
 """
-Generate regression baselines for the ellipsoids_eLife2025 test suite.
+Generate regression baselines for the ellipsoids_public test suite.
 
 Run this script once (from the repo root) to create/update the .npz
 baseline files committed in tests/baselines/:

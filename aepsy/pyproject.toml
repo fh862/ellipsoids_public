@@ -2,7 +2,7 @@
 name = "ellipsoids-aepsych"
 version = "0.1.0"
 requires-python = ">=3.12"
-description = "AEPsych experiment and simulation environment for ellipsoids_eLife2025"
+description = "AEPsych experiment and simulation environment for ellipsoids_public"
 
 # aepsych 0.7.3 pins numpy<2.0, which is incompatible with JAX 0.5+.
 # We therefore pin JAX to the latest 0.4.x release, which supports numpy 1.x.

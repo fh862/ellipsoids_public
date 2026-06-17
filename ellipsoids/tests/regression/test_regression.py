@@ -1,5 +1,5 @@
 """
-Regression tests for ellipsoids_eLife2025.
+Regression tests for ellipsoids_public.
 
 Each test loads a committed baseline from tests/baselines/, runs the same
 computation with the same inputs and frozen RNG, and checks that the new

@@ -1,4 +1,4 @@
-# ellipsoids_eLife2025 (dev)
+# ellipsoids_public (dev)
 
 Code accompanying:
 
@@ -11,7 +11,7 @@ Code accompanying:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/fh862/ellipsoids_eLife2025.git
+git clone https://github.com/fh862/ellipsoids_public.git ellipsoids_eLife2025
 cd ellipsoids_eLife2025
 ```
 
@@ -82,7 +82,7 @@ python -m pytest --tb=short -v
 
 ## Using this code from another project
 
-After installing with `pip install -e /path/to/ellipsoids_eLife2025/ellipsoids`, the packages (`core`, `analysis`, `plotting`, …) are available in that environment:
+After installing with `pip install -e /path/to/ellipsoids_public/ellipsoids`, the packages (`core`, `analysis`, `plotting`, …) are available in that environment:
 
 ```python
 from core.wishart_process import WishartProcessModel

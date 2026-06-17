@@ -11,8 +11,8 @@ Code accompanying:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/fh862/ellipsoids_public.git ellipsoids_eLife2025
-cd ellipsoids_eLife2025
+git clone https://github.com/fh862/ellipsoids_public.git
+cd ellipsoids_public
 ```
 
 ### 2. Create a virtual environment
@@ -51,7 +51,7 @@ does not support.  CPU-only performance on Apple Silicon is still very good.
 Each time you open a new terminal, activate the environment before running code:
 
 ```bash
-cd ellipsoids_eLife2025
+cd ellipsoids_public
 source .venv/bin/activate      # macOS / Linux
 # .venv\Scripts\activate       # Windows
 ```

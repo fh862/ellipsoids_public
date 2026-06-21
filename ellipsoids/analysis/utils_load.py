@@ -9,6 +9,8 @@ import tkinter as tk
 from tkinter import filedialog
 import os
 import re
+import subprocess
+import sys
 from numbers import Integral
 import dill as pickled
 import jax.numpy as jnp
@@ -89,24 +91,56 @@ def find_files_with_prefix(path, prefix, file_type="csv"):
         print("Invalid input.")
         return None
 
+def _select_file_with_macos_dialog():
+    script = 'POSIX path of (choose file with prompt "Select a File")'
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+
+    if result.returncode != 0:
+        if "User canceled" in result.stderr:
+            return ""
+        return None
+
+    return result.stdout.strip()
+
+
 def select_file_and_get_path():
+    if sys.platform == "darwin":
+        file_path = _select_file_with_macos_dialog()
+        if file_path == "":
+            return None, None
+        if file_path:
+            directory, file_name = os.path.split(file_path)
+            return directory, file_name
+
     # Create a hidden Tkinter root window
     root = tk.Tk()
     root.withdraw()  # Hide the root window
+    root.update_idletasks()
 
-    # Open the file dialog
-    file_path = filedialog.askopenfilename(
-        title="Select a File",
-        filetypes=[("CSV Files", "*.csv"), ("Pickle Files", "*.pkl"), ("Mat Files", "*.mat")]
-    )
-    
-    # If a file is selected, split its path into directory and file name
-    if file_path:
-        directory, file_name = os.path.split(file_path)
-        return directory, file_name
-    else:
-        return None, None
-    
+    try:
+        # Open the file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select a File",
+            filetypes=[("CSV Files", "*.csv"), ("Pickle Files", "*.pkl"), ("Mat Files", "*.mat")]
+        )
+
+        # If a file is selected, split its path into directory and file name
+        if file_path:
+            directory, file_name = os.path.split(file_path)
+            return directory, file_name
+        else:
+            return None, None
+    finally:
+        root.destroy()
+
 def select_files_and_get_paths():
     # Create a hidden Tkinter root window
     root = tk.Tk()
@@ -117,10 +151,10 @@ def select_files_and_get_paths():
         title="Select One or More Files",
         filetypes=[("CSV Files", "*.csv"), ("Pickle Files", "*.pkl"), ("Mat Files", "*.mat")]
     )
-    
+
     # Return a list of full file paths
     return list(file_paths) if file_paths else []
-    
+
 def select_multiple_files_across_folders():
     root = tk.Tk()
     root.withdraw()

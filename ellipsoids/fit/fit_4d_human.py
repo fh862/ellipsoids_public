@@ -23,7 +23,7 @@ If this is run on hpc, use runPython_wPytorch.sbatch
 #SBATCH --mail-type=END
 #SBATCH --mail-user=fh862@sas.upenn.edu
 #SBATCH -p gpu -N1 -G1 --constraint=h100 --cpus-per-task=4 --mem-per-cpu=20G
-#SBATCH --time=08:00:00
+#SBATCH --time=14:00:00
 
 (for 120 bootstrap datasets)
 
@@ -64,13 +64,18 @@ from dconfig.config_4Ddata import DatasetConfig_4D
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
     '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
 
-subN = 2
+subN = 1
 
 # choose one dataset
 # dcfg = DatasetConfig_4D.human_ls_isolating(base_dir, subN)
 dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)
 # dcfg = DatasetConfig_4D.human_varying_background(base_dir, subN)
 # dcfg = DatasetConfig_4D.simulated_isoluminant(base_dir, subN)
+
+# modify anything if needed
+#dcfg.file_date='02012026'
+#dcfg.adaptation_cond_str='_orange'
+#dcfg.__post_init__()   # rerun only if you changed something that affects derived fields
 
 dcfg.print_summary()
 nSession = dcfg.nSession
@@ -350,10 +355,10 @@ for flag_btst_AEPsych, ll in zip(flag_btst, btst_seed):
     output_file = f'{fig_name_part1}.pkl'
     full_path = os.path.join(output_fileDir_fits, output_file)
     
-    variable_names = ['subN', 'dcfg.stim_dims', 'dcfg.psyfield_dims','color_thres_data',
-                      'nSessions', 'btst_seed', 'data_allSessions', 'nTrials_strat',
-                      'xref_MOCS_list', 'x1_MOCS_list', 'y_MOCS_list', 'xref_MOCS', 
-                      'x1_MOCS','y_MOCS', 'xref_unique_MOCS', 'nRefs_MOCS', 
+    variable_names = ['subN', 'color_thres_data', 'nSessions', 'btst_seed',
+                      'data_allSessions', 'nTrials_strat', 'xref_MOCS_list',
+                      'x1_MOCS_list', 'y_MOCS_list', 'xref_MOCS', 'x1_MOCS',
+                      'y_MOCS', 'xref_unique_MOCS', 'nRefs_MOCS', 
                       'nTrials_MOCS','refStimulus_MOCS','compStimulus_MOCS', 
                       'responses_MOCS', 'nLevels_MOCS', 'aepsych_data',
                       'sobol_data', 'combined_data','nTrials_AEPsych', 

@@ -137,7 +137,8 @@ def PointsOnEllipsoid(radii, center, eigenVectors, unitEllipsoid):
     
     return ellipsoid
 
-def EllipsoidSurfaceMesh(radii, center, eigenVectors, nu = 120, nv = 240):
+def EllipsoidSurfaceMesh(radii, center, eigenVectors, nu = 120, nv = 240,
+                         phi_offset = 0.0):
     """
     Generate a parametric surface mesh (X, Y, Z) for a 3D ellipsoid.
 
@@ -153,6 +154,10 @@ def EllipsoidSurfaceMesh(radii, center, eigenVectors, nu = 120, nv = 240):
         # of samples along polar angle θ in [0, π]. Controls vertical resolution.
     nv : int, optional
         # of samples along azimuth φ in [0, 2π]. Controls circumferential resolution.
+    phi_offset : float, optional
+        Azimuth offset in radians. Useful for rotating the parametric seam
+        away from the default front-facing direction without changing the
+        ellipsoid geometry.
 
     Returns
     -------
@@ -166,7 +171,7 @@ def EllipsoidSurfaceMesh(radii, center, eigenVectors, nu = 120, nv = 240):
 
     # Angular parameterization of the unit sphere
     theta = np.linspace(0.0, np.pi,   int(nu))   # polar angle
-    phi   = np.linspace(0.0, 2*np.pi, int(nv))   # azimuth angle
+    phi   = np.linspace(0.0, 2*np.pi, int(nv)) + float(phi_offset)   # azimuth angle
     th, ph = np.meshgrid(theta, phi, indexing="ij")  # (nu, nv)
 
     # Unit-sphere coordinates s(θ, φ) = (sinθ cosφ, sinθ sinφ, cosθ)

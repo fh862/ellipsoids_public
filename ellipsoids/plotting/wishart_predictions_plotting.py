@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import matplotlib.ticker as mticker
 import matplotlib
+import os
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Union
 from datetime import datetime
@@ -115,6 +116,9 @@ class Plot3DPredHTMLSettings:
     # Fonts / labels
     font_family: str = "Arial"
     font_size: float = 12
+    tick_font_size: Optional[float] = None
+    axis_title_font_size: Optional[float] = None
+    flag_rgb_axis_display: bool = False
     xlabel: str = "Model space dimension 1"
     ylabel: str = "Model space dimension 2"
     zlabel: str = "Model space dimension 3"
@@ -122,6 +126,7 @@ class Plot3DPredHTMLSettings:
     ticks: np.ndarray = field(default_factory=lambda: np.linspace(-0.7, 0.7, 5))
     lim: List[float] = field(default_factory=lambda: [-1, 1])
     hide_spikes: bool = True
+    flag_no_cube_wall_background: bool = False
     # Camera
     camera_eye: Tuple[float,float,float] = (-1.8, -1.8, 1.2)
     camera_center: Tuple[float,float,float] = (0, 0, 0)
@@ -1272,6 +1277,63 @@ if (plotDiv) {{
       stopSpin();
     }}
   }});
+
+  function traceIsVisible(trace) {{
+    return !!trace && trace.visible !== 'legendonly' && trace.visible !== false;
+  }}
+
+  let syncingConnectorVisibility = false;
+
+  function syncConnectorVisibility() {{
+    if (syncingConnectorVisibility || !Array.isArray(plotDiv.data)) return;
+
+    const pairs = new Map();
+    plotDiv.data.forEach((trace, idx) => {{
+      const meta = trace?.meta;
+      const pairId = meta?.sync_pair;
+      const role = meta?.sync_role;
+      if (!pairId || !role) return;
+
+      if (!pairs.has(pairId)) {{
+        pairs.set(pairId, {{ reference: [], comparison: [], connector: [] }});
+      }}
+      const entry = pairs.get(pairId);
+      if (Object.prototype.hasOwnProperty.call(entry, role)) {{
+        entry[role].push(idx);
+      }}
+    }});
+
+    const updateIndices = [];
+    const updateValues = [];
+
+    pairs.forEach((entry) => {{
+      const refVisible = entry.reference.some((idx) => traceIsVisible(plotDiv.data[idx]));
+      const compVisible = entry.comparison.some((idx) => traceIsVisible(plotDiv.data[idx]));
+      const connectorShouldBeVisible = refVisible || compVisible;
+
+      entry.connector.forEach((idx) => {{
+        const currentlyVisible = traceIsVisible(plotDiv.data[idx]);
+        if (currentlyVisible !== connectorShouldBeVisible) {{
+          updateIndices.push(idx);
+          updateValues.push(connectorShouldBeVisible ? true : 'legendonly');
+        }}
+      }});
+    }});
+
+    if (!updateIndices.length) return;
+
+    syncingConnectorVisibility = true;
+    Plotly.restyle(plotDiv, {{ visible: updateValues }}, updateIndices).finally(() => {{
+      syncingConnectorVisibility = false;
+    }});
+  }}
+
+  plotDiv.on?.('plotly_restyle', function() {{
+    if (syncingConnectorVisibility) return;
+    window.requestAnimationFrame(syncConnectorVisibility);
+  }});
+
+  window.requestAnimationFrame(syncConnectorVisibility);
 }}
 """
         
@@ -1284,6 +1346,17 @@ if (plotDiv) {{
             c = np.clip(c, 0, 1) * 255.0
         r, g, b = np.clip(c, 0, 255).astype(int)[:3]
         return f"rgb({r}, {g}, {b})"
+
+    def _axis_titles(self):
+        if self.st.flag_rgb_axis_display:
+            return ("R", "G", "B")
+        return (self.st.xlabel, self.st.ylabel, self.st.zlabel)
+
+    def _axis_ticktext(self):
+        ticks = np.asarray(self.st.ticks, dtype=float)
+        if self.st.flag_rgb_axis_display:
+            return [f"{(v + 1.0) / 2.0:.2f}" for v in ticks]
+        return [f"{v:.2f}" for v in ticks]
         
     def add_plane_quad(self, fig, corners_3x4):
         """
@@ -1314,7 +1387,18 @@ if (plotDiv) {{
         ))
         return fig
     
-    def add_reference_point(self, fig, xyz, marker = None, color=None):
+    def add_reference_point(
+        self,
+        fig,
+        xyz,
+        marker=None,
+        color=None,
+        edgecolor=None,
+        lw=None,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+    ):
         """
         Add a single 3D reference point to the figure.
     
@@ -1330,6 +1414,14 @@ if (plotDiv) {{
         else:
             color = self.to_rgb_str(color)
 
+        marker_line = None
+        if edgecolor is not None or lw is not None:
+            marker_line = {}
+            if edgecolor is not None:
+                marker_line["color"] = self.to_rgb_str(edgecolor)
+            if lw is not None:
+                marker_line["width"] = lw
+
         fig.add_trace(go.Scatter3d(
             x=[xyz[0]],
             y=[xyz[1]],
@@ -1339,13 +1431,24 @@ if (plotDiv) {{
                 size=self.st.ref_size,
                 color=color,
                 symbol=marker or self.st.ref_marker,   # use string as symbol
+                line=marker_line,
             ),
-            showlegend=False,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
             hoverinfo=self.st.ref_hover_info,
         ))
         return fig
     
-    def add_sliced_ellipses(self, fig, sliced_ell_byPlane, color = None):
+    def add_sliced_ellipses(
+        self,
+        fig,
+        sliced_ell_byPlane,
+        color=None,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+    ):
         """
         Add 3D polylines for ellipse slices (each entry is iterable of (x, y, z)).
         """
@@ -1359,7 +1462,10 @@ if (plotDiv) {{
                 x=xe, y=ye, z=ze,
                 mode="lines",
                 line=dict(width=self.st.sEll_line_width, color= color),
-                showlegend=False, hoverinfo=self.st.sEll_hover_info
+                name=name,
+                legendgroup=legendgroup,
+                showlegend=showlegend,
+                hoverinfo=self.st.sEll_hover_info,
             ))
         return fig
         
@@ -1385,7 +1491,18 @@ if (plotDiv) {{
             ))
         return fig
 
-    def add_mesh_wireframe(self, fig, verts, faces, color, width=1, opacity=0.1):
+    def add_mesh_wireframe(
+        self,
+        fig,
+        verts,
+        faces,
+        color,
+        width=1,
+        opacity=0.1,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+    ):
         """
         Add the wireframe of a triangle mesh by drawing all unique mesh edges.
         """
@@ -1413,7 +1530,9 @@ if (plotDiv) {{
             mode="lines",
             line=dict(color=color, width=width),
             opacity=opacity,
-            showlegend=False,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
             hoverinfo="skip",
         ))
         return fig
@@ -1504,30 +1623,51 @@ if (plotDiv) {{
         
     def apply_3d_layout(self, fig):
         fs = int(self.st.font_size)
+        tick_fs = int(self.st.tick_font_size) if self.st.tick_font_size is not None else fs
+        # Plotly scene axis titles tend to render a bit smaller than tick labels
+        # at the same nominal size, so we compensate slightly by default.
+        title_fs = (
+            int(self.st.axis_title_font_size)
+            if self.st.axis_title_font_size is not None
+            else max(fs, int(round(fs * 1.2)))
+        )
+        xlabel, ylabel, zlabel = self._axis_titles()
+        ticktext = self._axis_ticktext()
     
         axis_spec = dict(
             tickmode="array",
             tickvals=list(self.st.ticks),
-            tickformat=".2f",
+            ticktext=ticktext,
             range=self.st.lim,
             showspikes=False,
+            ticks="outside",
+            ticklen=10,
+            tickwidth=1,
     
             # tick label font
-            tickfont=dict(size=fs),
+            tickfont=dict(size=tick_fs, family=self.st.font_family),
     
             # axis title font (new + legacy, for robustness)
-            title=dict(font=dict(size=fs)),
-            titlefont=dict(size=fs),
+            title=dict(font=dict(size=title_fs, family=self.st.font_family)),
+            titlefont=dict(size=title_fs, family=self.st.font_family),
         )
+        if self.st.flag_no_cube_wall_background:
+            axis_spec.update(
+                showbackground=False,
+                showgrid=True,
+                gridcolor='rgba(30, 30, 30, 0.35)',
+                gridwidth=1,
+                zeroline=False,
+            )
     
         fig.update_layout(
-            font=dict(family="Arial", size=fs),
+            font=dict(family=self.st.font_family, size=fs),
             hovermode=False if self.st.disable_hover else "closest",
             scene=dict(
                 aspectmode="cube",
-                xaxis=dict(axis_spec, title=dict(text=self.st.xlabel, font=dict(size=fs)), titlefont=dict(size=fs)),
-                yaxis=dict(axis_spec, title=dict(text=self.st.ylabel, font=dict(size=fs)), titlefont=dict(size=fs)),
-                zaxis=dict(axis_spec, title=dict(text=self.st.zlabel, font=dict(size=fs)), titlefont=dict(size=fs)),
+                xaxis=dict(axis_spec, title=dict(text=xlabel, font=dict(size=title_fs, family=self.st.font_family)), titlefont=dict(size=title_fs, family=self.st.font_family)),
+                yaxis=dict(axis_spec, title=dict(text=ylabel, font=dict(size=title_fs, family=self.st.font_family)), titlefont=dict(size=title_fs, family=self.st.font_family)),
+                zaxis=dict(axis_spec, title=dict(text=zlabel, font=dict(size=title_fs, family=self.st.font_family)), titlefont=dict(size=title_fs, family=self.st.font_family)),
             ),
             scene_camera=dict(
                 eye=dict(x=self.st.camera_eye[0], y=self.st.camera_eye[1], z=self.st.camera_eye[2]),
@@ -1539,8 +1679,27 @@ if (plotDiv) {{
         return fig
 
     def write_html(self, fig, out_html, include_plotlyjs=True, config=None):
+        default_config = {
+            "responsive": True,
+            "displaylogo": False,
+            "toImageButtonOptions": {
+                "format": "png",
+                "filename": os.path.splitext(os.path.basename(out_html))[0],
+                "width": 1600,
+                "height": 1600,
+                "scale": 4,
+            },
+        }
         if config is None:
-            config = {"responsive": True}
+            config = default_config
+        else:
+            config = {**default_config, **config}
+            default_image_options = default_config["toImageButtonOptions"]
+            user_image_options = config.get("toImageButtonOptions", {})
+            config["toImageButtonOptions"] = {
+                **default_image_options,
+                **user_image_options,
+            }
         fig.write_html(
             out_html,
             include_plotlyjs=include_plotlyjs,
@@ -1549,7 +1708,19 @@ if (plotDiv) {{
         )
     
     #optional
-    def add_dashed_line3d(self, fig, p0, p1, n_dashes=50, color="#111", width=5, hover=False):
+    def add_dashed_line3d(
+        self,
+        fig,
+        p0,
+        p1,
+        n_dashes=50,
+        color="#111",
+        width=5,
+        hover=False,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+    ):
         """
         Add a dashed 3D line between points p0 and p1.
     
@@ -1572,7 +1743,9 @@ if (plotDiv) {{
             x=xs, y=ys, z=zs, mode="lines",
             line=dict(color=color, width=width),
             hoverinfo="all" if hover else "skip",
-            showlegend=False
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
         ))
         return fig
 

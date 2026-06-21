@@ -2,7 +2,7 @@
 
 Code accompanying:
 
-> Hong, F., Kawakita, G., Yerxa, T., Garg, A., Grüner, M., Wool, L. E., Solomon, S. G., Brainard, D. H., & Ma, W. J. (2025). **Comprehensive characterization of human color discrimination thresholds.** *eLife.* https://elifesciences.org/reviewed-preprints/108943v1
+> Hong, F., Bouhassira, R., Chow, J., Sanders, C., Shvartsman, M., Guan, P., Williams, A. H., & Brainard, D. H. (2026). **Comprehensive characterization of human color discrimination thresholds.** *eLife*, 14:RP108943. https://doi.org/10.7554/eLife.108943.2
 
 ---
 
@@ -113,11 +113,9 @@ Code that builds directly on this repository:
 | `model_demo/` | Stand-alone model demonstrations |
 | `scripts/` | Utility scripts (e.g. data download) |
 | `dconfig/` | Experiment configuration files |
+| `fit/` | Model fitting scripts |
 | `tests/` | Automated test suite |
 | `data/` | Downloaded dataset — **not tracked by git** |
-| `fit_4d_human.py` | Main fitting script (4-D stimulus space) |
-| `fit_6d_human.py` | Main fitting script (6-D stimulus space) |
-| `fit_MOCS.py` | Fitting script for MOCS paradigm |
 
 *(All paths above are relative to the `ellipsoids/` subdirectory.)*
 

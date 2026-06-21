@@ -12,6 +12,7 @@ import jax.numpy as jnp
 from matplotlib.ticker import MaxNLocator
 from core.model_predictions import wishart_model_pred
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate
+from analysis.simulations_CIELab import scale_2d_ellipse_contour_from_params
 from colormath.color_diff import delta_e_cie2000, delta_e_cie1994, delta_e_cie1976
 from colormath.color_objects import LabColor
 
@@ -98,6 +99,7 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         # Use per-index lists to store fits; length = num_grid_pts1.
         self.params_ell      = [[] for _ in range(self.num_grid_pts1)]
         self.params_ell_CLab = [[] for _ in range(self.num_grid_pts1)]
+        self.params_ell_CLab_match = [[] for _ in range(self.num_grid_pts1)]
 
         shape_base = (self.num_grid_pts1, self.num_grid_pts2)
         
@@ -118,10 +120,12 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         # specified by `cfg` for that slice.
         self.fitEll_unscaled_WPPM = np.full(shape_base + (self.ndims_lab, self.params['nTheta']), np.nan)
         self.fitEll_unscaled_CLab = np.full(self.fitEll_unscaled_WPPM.shape, np.nan)
+        self.fitEll_unscaled_CLab_match = np.full(self.fitEll_unscaled_WPPM.shape, np.nan)
 
         # Same ellipses, scaled for visualization only (e.g., clearer overlays).
         self.fitEll_scaled_WPPM = np.full(self.fitEll_unscaled_WPPM.shape, np.nan)
         self.fitEll_scaled_CLab = np.full(self.fitEll_unscaled_WPPM.shape, np.nan)
+        self.fitEll_scaled_CLab_match = np.full(self.fitEll_unscaled_WPPM.shape, np.nan)
 
         # Threshold *points* (unscaled) sampled along directions before ellipse fit.
         # Shape matches ellipse arrays but stores raw contour samples.
@@ -705,6 +709,57 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
                 self.fitEll_scaled_CLab[i, j] = self.fill_in_fixed_dim(fitEll_scaled_CLab_ij, fd, fv)
                 self.fitEll_unscaled_CLab[i, j] = self.fill_in_fixed_dim(fitEll_unscaled_CLab_ij, fd, fv)
                 self.Lab_thres_scaled_CLab[i, j] = self.fill_in_fixed_dim(Lab_thres_scaled_CLab_ij, fd, fv)
+
+    def add_CIELab_match_predictions(
+        self,
+        Lab_ref,
+        bestfit_radii_scaler,
+        ell_vis_scaler=1.0,
+    ):
+        """
+        Render CIELAB-predicted ellipses after applying a subject-specific radius scaler.
+
+        Parameters
+        ----------
+        Lab_ref : array, shape (G1, G2, 3)
+            Grid of Lab reference stimuli defining the slice.
+        bestfit_radii_scaler : float
+            Radius scale factor fitted against the WPPM ellipses.
+        ell_vis_scaler : float, optional
+            Visualization-only scaling applied after the matched radius scaling.
+        """
+        if Lab_ref.shape[:2] != (self.num_grid_pts1, self.num_grid_pts2):
+            raise ValueError(
+                "Lab_ref grid shape does not match the stored CIELAB predictions: "
+                f"expected {(self.num_grid_pts1, self.num_grid_pts2)}, got {Lab_ref.shape[:2]}."
+            )
+
+        for i in range(self.num_grid_pts1):
+            self.params_ell_CLab_match[i] = [[] for _ in range(self.num_grid_pts2)]
+
+            for j in range(self.num_grid_pts2):
+                fitEll_scaled_match_ij, fitEll_unscaled_match_ij, params_match_ij = \
+                    scale_2d_ellipse_contour_from_params(
+                        self.params_ell_CLab[i][j],
+                        radii_scaler=bestfit_radii_scaler,
+                        ellipse_vis_scaler=ell_vis_scaler,
+                        nTheta=self.params['nTheta'],
+                    )
+
+                fd = self.cfg.fixed_dim.value
+                fv = Lab_ref[i, j, fd].item()
+
+                self.params_ell_CLab_match[i][j] = params_match_ij
+                self.fitEll_scaled_CLab_match[i, j] = self.fill_in_fixed_dim(
+                    fitEll_scaled_match_ij,
+                    fd,
+                    fv,
+                )
+                self.fitEll_unscaled_CLab_match[i, j] = self.fill_in_fixed_dim(
+                    fitEll_unscaled_match_ij,
+                    fd,
+                    fv,
+                )
                 
 #%%
 def compute_thres_in_delta_batch(M1, M2, color_alg):

@@ -693,7 +693,68 @@ def compute_radii_scaler_to_reach_targetPC(pC_target, ndims = 2, lb = 2, ub = 3,
     # Retrieve the optimal scaling factor and the corresponding probability
     opt_scaler = z2_scaler[min_idx]
     return opt_scaler, probC[min_idx], probC
-        
+
+
+def compute_radii_scaler_to_reach_targetPC_TAFC(pC_target, ndims=2, lb=1.0, ub=3.0,
+                                                 nsteps=100, nz=int(1e4),
+                                                 flag_visualize=False):
+    """
+    2AFC version of compute_radii_scaler_to_reach_targetPC.
+
+    Uses the known-reference decision rule matching simulate_oddity_one_trial_reference:
+    three noisy draws are made (zref, z0 as a foil with the same distribution as the
+    reference, z1 as the comparison offset by scaler in the last dimension). The observer
+    reports which of z0 or z1 is further from zref. Correct when z1_to_zref > z0_to_zref.
+
+    Parameters:
+    - pC_target: Target probability of correct classification.
+    - ndims: the dimensionality of the Gaussian distribution (2 or 3)
+    - lb: Lower bound of the scaler (radius) range to search over.
+    - ub: Upper bound of the scaler (radius) range to search over.
+    - nsteps: Number of steps for the scaler search range.
+    - nz: Number of samples to generate for the distribution.
+
+    Returns:
+    - opt_scaler: The scaler that yields the probability closest to pC_target.
+    - probC[min_idx]: The probability of correct classification at the optimal scaler.
+    - probC: Full probability array across scaler values.
+    """
+    mean = [0] * ndims
+    cov = np.eye(ndims)
+
+    z2_scaler = np.linspace(lb, ub, nsteps)
+    probC = np.full((nsteps), np.nan)
+
+    for idx, scaler in enumerate(z2_scaler):
+        # Reference draw (noisy internal representation of the reference)
+        zref = np.random.multivariate_normal(mean, cov, nz)
+        # Foil: same distribution as reference
+        z0 = np.random.multivariate_normal(mean, cov, nz)
+        # Comparison: offset by scaler in last dimension
+        z1_center = np.array([0] * (ndims - 1) + [scaler])
+        z1 = np.random.multivariate_normal(mean, cov, nz) + z1_center[None, :]
+
+        # Average covariance (Sbar = I for unit-sphere case, diag_term = 0)
+        Sbar = cov
+
+        r0 = z0 - zref
+        r1 = z1 - zref
+
+        z0_to_zref = jnp.sum(r0 * jnp.linalg.solve(Sbar, r0.T).T, axis=1)
+        z1_to_zref = jnp.sum(r1 * jnp.linalg.solve(Sbar, r1.T).T, axis=1)
+
+        # Correct when foil is closer to ref than comparison (z0_to_zref < z1_to_zref)
+        zdiff = z0_to_zref - z1_to_zref
+        probC[idx] = np.sum(zdiff < 0) / nz
+
+    if flag_visualize:
+        plt.plot(z2_scaler, probC)
+
+    min_idx = np.argmin(np.abs(pC_target - probC))
+    opt_scaler = z2_scaler[min_idx]
+    return opt_scaler, probC[min_idx], probC
+
+
 #%%
 class GegenfurtnerEll:
     def convert_ellParamsW_to_covMatDKL(a, b, theta, M_trans):

@@ -63,7 +63,7 @@ base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis
 # -------------------------------------------------------------------------
 # Example:
 # ELPS_analysis/Experiment_DataFiles/sub#/...
-# Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.5_nBasisDeg5.pkl
+# Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.4_nBasisDeg5.pkl
 input_fileDir_fits, file_name = select_file_and_get_path()
 full_path = os.path.join(input_fileDir_fits, file_name)
 

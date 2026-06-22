@@ -19,7 +19,7 @@ from enum import IntEnum
 from typing import Tuple, Sequence, Dict, List
 from colormath.color_objects import LabColor
 from colormath.color_diff import delta_e_cie2000, delta_e_cie1994, delta_e_cie1976
-from analysis.ellipses_tools import UnitCircleGenerate
+from analysis.ellipses_tools import UnitCircleGenerate, ellParamsQ_to_covMat, PointsOnEllipseQ
 #in order for delta_e_cie2000 to work, we need to do the following adjustment
 def patch_asscalar(a):
     return a.item()
@@ -259,7 +259,7 @@ class SimThresCIELab:
         color_XYZ = colour.Lab_to_XYZ(color_Lab, self.background_xyY)
         
         # Map XYZ back to linear display RGB using the inverse calibration matrix.
-        color_RGB = self.M_XYZToRGB @ color_XYZ
+        color_RGB = self.M_XYZToRGB @ color_XYZ.T
     
         return color_RGB.T, color_XYZ 
 
@@ -664,6 +664,7 @@ def fit_best_scaler_for_covariance_match(
     cov_ref_flat = cov_ref.reshape(-1, 2, 2)
     cov_match_flat = cov_match.reshape(-1, 2, 2)
 
+    #the squared Frobenius norm
     sum_sqerr = lambda d: np.sum(
         (cov_ref_flat - (d ** 2) * cov_match_flat) ** 2
     )
@@ -685,6 +686,140 @@ def fit_best_scaler_for_covariance_match(
         )
 
     return bestfit_scaler
+
+
+def fit_best_scaler_for_ellparams_match(
+    ellParams_ref,
+    ellParams_match,
+    bounds=(0.1, 5),
+    tol=1e-5,
+    maxiter=500,
+):
+    """
+    Fit one scalar that best matches two batches of 2D ellipse parameters.
+
+    The fitted scalar `d` rescales the semi-axis lengths in `ellParams_match`
+    by `d`. Ellipse parameters are first converted into covariance matrices,
+    then matched by calling `fit_best_scaler_for_covariance_match`.
+
+    Parameters
+    ----------
+    ellParams_ref : array_like
+        Reference ellipse parameters with shape (..., 5) for
+        `[xc, yc, a, b, theta_deg]` or (..., 3) for `[a, b, theta_deg]`.
+        Any center coordinates are ignored because covariance depends only on
+        `(a, b, theta_deg)`.
+    ellParams_match : array_like
+        Ellipse parameters to be scaled, with the same shape as
+        `ellParams_ref`.
+    bounds : tuple, optional
+        Lower and upper bounds for the fitted scaler.
+    tol : float, optional
+        Tolerance for warning when the optimum lands near a bound.
+    maxiter : int, optional
+        Maximum number of iterations for `minimize_scalar`.
+
+    Returns
+    -------
+    bestfit_scaler : float
+        Best-fitting scalar applied to ellipse radii.
+    """
+    ellParams_ref = np.asarray(ellParams_ref, dtype=float)
+    ellParams_match = np.asarray(ellParams_match, dtype=float)
+
+    if ellParams_ref.shape != ellParams_match.shape:
+        raise ValueError(
+            f"`ellParams_ref` and `ellParams_match` must have the same shape, got "
+            f"{ellParams_ref.shape} and {ellParams_match.shape}."
+        )
+    if ellParams_ref.ndim < 1 or ellParams_ref.shape[-1] not in (3, 5):
+        raise ValueError(
+            "Expected ellipse-parameter inputs with shape (..., 5) for "
+            "[xc, yc, a, b, theta_deg] or (..., 3) for [a, b, theta_deg], "
+            f"got {ellParams_ref.shape}."
+        )
+
+    n_params = ellParams_ref.shape[-1]
+    ellParams_ref_flat = ellParams_ref.reshape(-1, n_params)
+    ellParams_match_flat = ellParams_match.reshape(-1, n_params)
+
+    if n_params == 5:
+        ellParams_ref_flat = ellParams_ref_flat[:, 2:]
+        ellParams_match_flat = ellParams_match_flat[:, 2:]
+
+    cov_ref = np.stack(
+        [ellParamsQ_to_covMat(a, b, theta) for a, b, theta in ellParams_ref_flat],
+        axis=0,
+    ).reshape(ellParams_ref.shape[:-1] + (2, 2))
+    cov_match = np.stack(
+        [ellParamsQ_to_covMat(a, b, theta) for a, b, theta in ellParams_match_flat],
+        axis=0,
+    ).reshape(ellParams_match.shape[:-1] + (2, 2))
+
+    return fit_best_scaler_for_covariance_match(
+        cov_ref,
+        cov_match,
+        bounds=bounds,
+        tol=tol,
+        maxiter=maxiter,
+    )
+
+
+def scale_2d_ellipse_contour_from_params(
+    ellParams,
+    radii_scaler=1.0,
+    ellipse_vis_scaler=1.0,
+    nTheta=200,
+):
+    """
+    Scale 2D ellipse radii from fitted ellipse parameters and render contours.
+
+    Parameters
+    ----------
+    ellParams : array_like
+        Ellipse parameters with shape (..., 5) encoded as
+        `[xc, yc, a, b, theta_deg]`.
+    radii_scaler : float, optional
+        Scale factor applied to the semi-axis lengths `(a, b)`.
+    ellipse_vis_scaler : float, optional
+        Additional visualization-only scaling applied to rendered contour
+        points about the ellipse center.
+    nTheta : int, optional
+        Number of contour samples used to render each ellipse.
+
+    Returns
+    -------
+    fitEll_scaled : ndarray
+        Visualization-scaled contour points with shape (..., 2, nTheta).
+    fitEll_unscaled : ndarray
+        Contour points after applying `radii_scaler` only, with shape
+        (..., 2, nTheta).
+    ellParams_scaled : ndarray
+        Scaled ellipse parameters with shape (..., 5).
+    """
+    ellParams = np.asarray(ellParams, dtype=float)
+
+    if ellParams.ndim < 1 or ellParams.shape[-1] != 5:
+        raise ValueError(
+            "Expected ellipse parameters with shape (..., 5) encoded as "
+            f"[xc, yc, a, b, theta_deg], got {ellParams.shape}."
+        )
+
+    ellParams_scaled = ellParams.copy()
+    ellParams_scaled[..., 2:4] *= radii_scaler
+
+    ellParams_scaled_flat = ellParams_scaled.reshape(-1, 5)
+    fitEll_unscaled_flat = np.empty((ellParams_scaled_flat.shape[0], 2, nTheta), dtype=float)
+
+    for idx, (xc, yc, a, b, theta_deg) in enumerate(ellParams_scaled_flat):
+        fit_x, fit_y = PointsOnEllipseQ(a, b, theta_deg, xc, yc, nTheta=nTheta)
+        fitEll_unscaled_flat[idx] = np.stack((fit_x, fit_y), axis=0)
+
+    fitEll_unscaled = fitEll_unscaled_flat.reshape(ellParams.shape[:-1] + (2, nTheta))
+    centers = ellParams_scaled[..., :2][..., :, None]
+    fitEll_scaled = (fitEll_unscaled - centers) * ellipse_vis_scaler + centers
+
+    return fitEll_scaled, fitEll_unscaled, ellParams_scaled
 
 #%%
 def strip_trailing_zeros(s):

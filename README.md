@@ -61,13 +61,11 @@ source .venv/bin/activate      # macOS / Linux
 ## Dataset
 
 The experimental data are hosted on OSF at <https://osf.io/k27js>.
-Download everything into `data/` with:
 
-```bash
-python ellipsoids/scripts/download_osf_data.py
-```
-
-Pass `--data-dir /your/preferred/path` to save elsewhere. The script uses only Python stdlib (no extra packages needed).
+To download the data and work through example analyses, see
+**[BrainardLab/wppmpy_public](https://github.com/BrainardLab/wppmpy_public)**,
+which provides a targeted download script and example notebooks that illustrate
+how to load and use the dataset alongside this code.
 
 ---
 
@@ -132,7 +130,7 @@ from analysis.color_thres import color_thresholds
 
 Code that builds directly on this repository:
 
-- **[BrainardLab/wppmpy_public](https://github.com/BrainardLab/wppmpy_public)** — public toolbox and illustrative examples accompanying the WPPM, including additional analysis notebooks and AEPsych-based experiment runner code.
+- **[BrainardLab/wppmpy_public](https://github.com/BrainardLab/wppmpy_public)** — companion toolbox for the WPPM.  Contains a script to download the Hong et al. (2025) OSF dataset, example notebooks reproducing key figures from the paper, and AEPsych-based experiment runner code for collecting new color-discrimination data.
 
 ---
 

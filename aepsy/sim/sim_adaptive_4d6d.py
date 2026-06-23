@@ -96,7 +96,7 @@ gt_Wishart  = color_thres_data.get_data('model_pred_Wishart', dataset = 'Wishart
 SUBJ  = 1
 
 # Directory containing customized AEPsych configuration files
-path_str_config = os.path.join(root,'customized_configs')
+path_str_config = get_path("aepsych_config_dir")
 
 # Name of the template configuration file
 file_config = f"single_{psyfield_dims}d_colorDiscrimination_EAVC_4strats_new.ini"
@@ -271,4 +271,3 @@ for var_name in variable_names:
 # Write the list of dictionaries to a file using pickle
 with open(full_path_file, 'wb') as f:
     pickled.dump(vars_dict, f)
-

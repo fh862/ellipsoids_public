@@ -149,6 +149,8 @@ for idx in np.ndindex(*base_size):
 # output directories
 output_figDir = os.path.join(base_dir, 'ELPS_analysis','Simulation_FigFiles','2D',f'{color_diff_algorithm}')
 output_fileDir = os.path.join(base_dir, 'ELPS_analysis','Simulation_DataFiles', '2D',f'{color_diff_algorithm}')
+os.makedirs(output_figDir, exist_ok=True)
+os.makedirs(output_fileDir, exist_ok=True)
 pltSettings_base = PlotSettingsBase(fig_dir=output_figDir, fontsize = 15)
 
 # -----------------------------------------------------------

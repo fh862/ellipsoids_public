@@ -97,9 +97,9 @@ base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
 subN = 2
 decay_rate = 0.4
 # choose one dataset
-#dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN, decay_rate = decay_rate)
+dcfg = DatasetConfig_4D_MOCS.human_isoluminant(base_dir, subN, decay_rate = decay_rate)
 #dcfg = DatasetConfig_4D_MOCS.simulated_isoluminant(base_dir)
-dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
+#dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
 
 #print out summary
 dcfg.print_summary()

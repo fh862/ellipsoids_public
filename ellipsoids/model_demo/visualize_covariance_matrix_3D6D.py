@@ -109,6 +109,7 @@ Sigmas_grid = model.compute_Sigmas(U) * 0.15
 # -----------------------------------------------------------
 # Subdirectory specific to this covariance-matrix visualization
 fig_outputDir = os.path.join(fig_output_sim, f'CovarianceMatrix_{ndims}D{ndims * 2}D')
+os.makedirs(fig_outputDir, exist_ok=True)
 
 # Initialize base plotting settings (shared across different plot types)
 pltSettings_base = PlotSettingsBase(

@@ -141,6 +141,7 @@ plt.setp(axs[1].get_xticklabels(), rotation=0)
 plt.tight_layout()
 plt.show()
 # Save the figure as a PDF
-fig.savefig(os.path.join(base_dir, 'Experiment_FigFiles','pilot2','groupData',
-                         'fits', 'Slope_corrcoef_groupData.pdf'),
+output_figDir = os.path.join(base_dir, 'Experiment_FigFiles', 'pilot2', 'groupData', 'fits')
+os.makedirs(output_figDir, exist_ok=True)
+fig.savefig(os.path.join(output_figDir, 'Slope_corrcoef_groupData.pdf'),
              format='pdf', bbox_inches='tight')

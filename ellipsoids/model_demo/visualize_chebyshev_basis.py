@@ -171,6 +171,7 @@ fig_W_dir = os.path.join(baseDir,
                          'WishartPractice_FigFiles',
                          'Estimated_W_matrix'
                          )
+os.makedirs(fig_W_dir, exist_ok=True)
 pltSettings_base_W = PlotSettingsBase(fig_dir = fig_W_dir, fontsize = 9)
 pltSettings_W = replace(PlotWSettings(), **pltSettings_base_W.__dict__)
 

@@ -62,6 +62,7 @@ model_pred_Wishart_set2 = vars_dict_set2['model_pred_Wishart']
     
 #%%
 output_figDir_fits = os.path.join(base_dir, 'Experiment_FigFiles','pilot2',f'sub{subN}', 'add_MOCS_data')#'by_sessions')
+os.makedirs(output_figDir_fits, exist_ok=True)
 pltSettings_base = PlotSettingsBase(fig_dir=output_figDir_fits, fontsize = 8)
 fig_name_part1 = 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_'+\
     f'all_vs_partial_AEPsychData_{sesInfo}' #decay0.4vs0.8

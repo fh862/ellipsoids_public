@@ -65,7 +65,7 @@ from dconfig.config_4Ddata import DatasetConfig_4D
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
     get_path("dropbox_root_mac")
 
-subN = 1
+subN = 2
 
 # choose one dataset
 # dcfg = DatasetConfig_4D.human_ls_isolating(base_dir, subN)

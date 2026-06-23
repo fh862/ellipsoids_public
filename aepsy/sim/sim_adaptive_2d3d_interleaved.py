@@ -103,7 +103,7 @@ grid = color_thres_data.get_data(f'grid{num_grid_pts}',
 SUBJ = 1
 
 # Directory containing customized AEPsych configuration files
-path_str_config = os.path.join(root,'customized_configs')
+path_str_config = get_path("aepsych_config_dir")
 
 # Name of the template configuration file
 file_config = f"single_{stim_dims}d_colorDiscrimination_EAVC_4strats_new.ini"
@@ -269,5 +269,4 @@ for var_name in variable_names:
 with open(full_path2, 'wb') as f:
     pickled.dump(vars_dict, f)
     
-
 

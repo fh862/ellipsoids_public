@@ -9,12 +9,15 @@ jax.config.update("jax_enable_x64", True)
 import sys
 import time
 import os
-sys.path.append('c:\\users\\brainardlab\\documents\\github\\ellipsoids\\ellipsoids')
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from analysis.utils_load import get_path
 from analysis.color_thres import color_thresholds
 from analysis.utils_communication import CommunicateViaTextFile, ExperimentFileManager, get_experiment_info_custom
 
 #add color thres data
-baseDir = 'D:\\Aguirre-Brainard Lab Dropbox\\Fangfang Hong\\'
+baseDir = get_path("dropbox_root_windows_d")
 color_thres_data = color_thresholds(2, baseDir,  plane_2D = 'Isoluminant plane')
 #load transformation matrices
 color_thres_data.load_transformation_matrix()
@@ -33,13 +36,13 @@ subject_id, subject_init, session_today = get_experiment_info_custom()
 is_practice =True
 if is_practice:
     # Define the shared network path specific to the subject
-    networkDisk_path = f'b:\\sub{subject_id}\\practice'
+    networkDisk_path = f'{get_path("network_disk_windows_mapped_lower")}sub{subject_id}\\practice'
     
     # Define the name of the metadata file (pickle file) that tracks the subject's experiment data
     expt_info = f'sub{subject_id}_{subject_init}_expt_record_practice.pkl' 
 else:
     # Define the shared network path specific to the subject
-    networkDisk_path = f'b:\\sub{subject_id}'
+    networkDisk_path = f'{get_path("network_disk_windows_mapped_lower")}sub{subject_id}'
     
     # Define the name of the metadata file (pickle file) that tracks the subject's experiment data
     expt_info = f'sub{subject_id}_{subject_init}_expt_record.pkl'     
@@ -92,4 +95,3 @@ while True:
     trial_counter+= 1
     time.sleep(0.01)
     print("RGB values confirmed.")
-

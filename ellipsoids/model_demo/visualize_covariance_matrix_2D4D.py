@@ -41,6 +41,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import os
+from analysis.utils_load import get_path
 from dataclasses import replace
 #load functions from other modules
 from core.wishart_process import WishartProcessModel
@@ -93,7 +94,7 @@ Sigmas_test_grid = model.compute_Sigmas(U)
 # SECTION 2: Visualize 2D covariance matrix
 # -----------------------------------------------------------
 # Base directory for saving figures
-baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+baseDir = get_path("dropbox_root_mac")
 
 # Directory for all Wishart practice figure files
 fig_output_sim = os.path.join(baseDir, 'ELPS_analysis', 'WishartPractice_FigFiles')

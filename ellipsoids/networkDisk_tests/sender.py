@@ -10,7 +10,10 @@ import os
 import numpy as np
 import random
 import pickle
-sys.path.append('c:\\users\\brainardlab\\documents\\github\\ellipsoids\\ellipsoids')
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from analysis.utils_load import get_path
 from analysis.utils_communication import CommunicateViaTextFile,\
     ExperimentFileManager, get_experiment_info_custom, get_comment_after_session
 
@@ -19,7 +22,7 @@ from analysis.utils_communication import CommunicateViaTextFile,\
 subject_id, subject_init, session_today = get_experiment_info_custom()
 
 # Define the main shared network disk path where files will be stored
-networkDisk_path = 'c:\Shares\BrainardLab'
+networkDisk_path = get_path("network_disk_windows")
 # Create the path for the subject's directory
 path_sub = os.path.join(networkDisk_path, f'sub{subject_id}')
 
@@ -66,7 +69,7 @@ if not flag_load_rgb:
     ref_rgb_values = np.random.rand(10, 3)  # Generate 10 random RGB values
     comp_rgb_values = np.random.rand(10, 3)
 else:
-    stim_at_thres_path = r'c:\Users\brainardlab\Aguirre-Brainard Lab Dropbox\Fangfang Hong\ELPS_analysis\Experiment_DataFiles\pilot2\sub1\fits\Stim_at_thres_for_image_generation_sub1.pkl'
+    stim_at_thres_path = get_path("stim_at_threshold_image_file_windows")
     # Load the dictionary from the pickle file
     with open(stim_at_thres_path, 'rb') as f:
         stim_at_thres_dict = pickle.load(f)
@@ -90,7 +93,6 @@ expt_file_manager.status_updates('Done')
     
 #%%add a comment at the end of an experiment
 expt_file_manager.add_comments(get_comment_after_session())
-
 
 
 

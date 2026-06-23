@@ -12,10 +12,8 @@ import os
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
-
-#load functions from other modules
-sys.path.append('c:\\users\\brainardlab\\documents\\github\\ellipsoids\\ellipsoids')
-#sys.path.append('/Users/fangfang/Documents/MATLAB/projects/ellipsoids/ellipsoids')
+# Machine-specific repository paths are stored in config/hardcoded_paths_*.json.
+from analysis.utils_load import get_path
 from analysis.color_thres import color_thresholds
 from analysis.config_generator import ConfigGenerator
 from analysis.utils_communication import CommunicateViaTextFile,\
@@ -77,8 +75,7 @@ COLOR_DIMENSION = 4  # Defines the dimensionality of the thresholding experiment
 plane_2D = 'Isoluminant plane'  # Stimuli are constrained to the isoluminant plane
 
 # Define base directory for experiment files
-baseDir = 'c:\\users\\brainardlab\\Aguirre-Brainard Lab Dropbox\\Fangfang Hong\\'
-#baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong'
+baseDir = get_path("dropbox_root_windows")
 
 # Load transformation matrices to map between Wishart, DKL, and RGB spaces
 color_thres_data = color_thresholds(COLOR_DIMENSION // 2, 
@@ -93,8 +90,7 @@ color_thres_data.load_transformation_matrix()
 subject_id, subject_init, session_today = get_experiment_info_custom()
 
 # Define the primary network disk path for storing experiment files
-networkDisk_path = 'c:\\Shares\\BrainardLab'
-#networkDisk_path = '/Volumes/BrainardLabShares/brainardlab/'
+networkDisk_path = get_path("network_disk_windows")
 
 # Create a subject-specific directory path for storing their session data
 path_sub = os.path.join(networkDisk_path, f'sub{subject_id}', 'practice')

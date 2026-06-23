@@ -1,0 +1,9 @@
+{
+  "dropbox_root_windows": "c:\\users\\brainardlab\\Aguirre-Brainard Lab Dropbox\\Fangfang Hong\\",
+  "dropbox_root_windows_d": "D:\\Aguirre-Brainard Lab Dropbox\\Fangfang Hong\\",
+  "network_disk_windows": "c:\\Shares\\BrainardLab",
+  "network_disk_windows_mapped": "B:\\",
+  "network_disk_windows_mapped_lower": "b:\\",
+  "unity_calibration_root_windows": "D:/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_materials/Calibration/",
+  "stim_at_threshold_image_file_windows": "c:\\Users\\brainardlab\\Aguirre-Brainard Lab Dropbox\\Fangfang Hong\\ELPS_analysis\\Experiment_DataFiles\\pilot2\\sub1\\fits\\Stim_at_thres_for_image_generation_sub1.pkl"
+}

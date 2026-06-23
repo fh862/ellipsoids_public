@@ -53,7 +53,7 @@ class PlotCovMatSettings(PlotSettingsBase):
     ])
     scaler_ell: float = 1
     covMat_title: str = '2D plane'
-    cmap_bds: List[float] = field(default_factory=lambda: [-0.02, 0.02])
+    cmap_bds: List[float] = field(default_factory=list)
     cbar_labelsize: float = 8
     flag_rescale_axes_label: bool = False
     flag_add_horz_vert_lines: bool = True
@@ -61,7 +61,7 @@ class PlotCovMatSettings(PlotSettingsBase):
     
 @dataclass
 class PlotBasis2DSettings(PlotSettingsBase):
-    cmap_bds: List[float] = field(default_factory=lambda: [-1, 1])
+    cmap_bds: List[float] = field(default_factory=list)
     fig_size: Tuple[float, float] = (8, 8)
     fig_name: str = 'Chebyshev_basis_functions_2D'
     cmap: str = 'PRGn'
@@ -73,7 +73,7 @@ class PlotBasis3DSettings(PlotSettingsBase):
     xyzlim: List[float] = field(default_factory=lambda: [-1.05, 1.05])
     fig_name: str = 'Chebyshev_basis_function'
     cmap: str = 'PRGn'
-    cmap_bds: List[float] = field(default_factory=lambda: [-1, 1])
+    cmap_bds: List[float] = field(default_factory=list)
     flag_remake_cmap: bool = False
     view_anlge: Tuple[float, float] = (20, -75)
     
@@ -81,7 +81,7 @@ class PlotBasis3DSettings(PlotSettingsBase):
 class PlotWSettings(PlotSettingsBase):
     fig_size: Tuple[float, float] = (5, 5)
     cmap: str = 'RdBu_r'
-    cmap_bds: List[float] = field(default_factory=lambda: [-0.05, 0.05])
+    cmap_bds: List[float] = field(default_factory=list)
     add_title: bool = False
     show_colorbar: bool = False
     fig_name: str = 'EstimatedWeightMatrix'
@@ -109,7 +109,7 @@ class PlotUSettings(PlotSettingsBase):
     fig_size: Tuple[float, float] = (5, 4)
     cmap: str = 'PRGn'
     flag_remake_cmap: bool = False
-    cmap_bds: List[float] = field(default_factory=lambda: [-0.05, 0.05])
+    cmap_bds: List[float] = field(default_factory=list)
     ticks: np.ndarray = field(default_factory=lambda: np.linspace(-0.6, 0.6, 5))
     xyzlim: List[float] = field(default_factory=lambda: [-1.05, 1.05])
     view_anlge: Tuple[float, float] = (20, -75)
@@ -238,6 +238,14 @@ class PlottingTools:
                 ax.set_zlabel('Model space dimension 3', fontsize=fs)
                 ax.set_title('3D cube', fontsize=fs)
   
+    @staticmethod
+    def configure_colormap(data):
+        """Choose symmetric color bounds around zero from the data range."""
+        max_abs_val = float(np.nanmax(np.abs(data)))
+        if not np.isfinite(max_abs_val) or max_abs_val == 0:
+            max_abs_val = 1.0
+        return [-max_abs_val, max_abs_val]
+    
     @staticmethod
     def remake_cmap(cmap, N=256, gamma=0.6):
         """
@@ -383,7 +391,7 @@ class WishartModelBasicsVisualization(PlottingTools):
 
         # Configure the colormap bounds from the fine-scale covariances,
         # unless explicit bounds were provided in `settings`.
-        cmap_bds = settings.cmap_bds if settings.cmap_bds else self._configure_colormap(cov_fine)
+        cmap_bds = settings.cmap_bds if settings.cmap_bds else self.configure_colormap(cov_fine)
         
         if settings.flag_remake_cmap: cmap = PlottingTools.remake_cmap(settings.cmap);
         else: cmap = settings.cmap
@@ -557,6 +565,13 @@ class WishartModelBasicsVisualization(PlottingTools):
         xg, yg = np.meshgrid(grid, grid)
         # Initialize a grid for storing coefficients of the 2D polynomials.
         cg = np.zeros((degree, degree))
+        basis_values = np.zeros((grid.shape[0], grid.shape[0], degree, degree))
+        for i in range(degree):
+            for j in range(degree):
+                cg[i, j] = 1.0
+                basis_values[:, :, i, j] = chebval2d(xg, yg, cg)
+                cg[i, j] = 0.0
+        cmap_bds = settings.cmap_bds if settings.cmap_bds else self.configure_colormap(basis_values)
         
         if ax is None:
             # Create a figure with subplots arranged in a square grid.
@@ -567,18 +582,11 @@ class WishartModelBasicsVisualization(PlottingTools):
 
         for i in range(degree):
             for j in range(degree):
-                # Activate the (i, j)th term by setting its coefficient to 1.
-                cg[i, j] = 1.0
-                # Evaluate the 2D polynomial at the grid points.
-                zg_2d = chebval2d(xg, yg, cg)
-                
                 # Display the result as an image in the corresponding subplot.
-                ax[i, j].imshow(zg_2d, origin='lower',
+                ax[i, j].imshow(basis_values[:, :, i, j], origin='lower',
                                   cmap = settings.cmap, 
-                                  vmin = settings.cmap_bds[0], 
-                                  vmax = settings.cmap_bds[1])
-                # Reset the coefficient for the next iteration.
-                cg[i, j] = 0.0
+                                  vmin = cmap_bds[0],
+                                  vmax = cmap_bds[1])
                 
                 # Update axis labels and limits to make the plots cleaner.
                 self._update_axes_labels(ax[i,j], [], [])
@@ -618,11 +626,7 @@ class WishartModelBasicsVisualization(PlottingTools):
 
         """
         colormap = plt.get_cmap(settings.cmap)
-        if settings.cmap_bds:
-            cmap_bds = settings.cmap_bds
-        else:
-            max_abs_val = float(max(abs(np.min(M)), abs(np.max(M))))
-            cmap_bds = [-max_abs_val, max_abs_val]
+        cmap_bds = settings.cmap_bds if settings.cmap_bds else self.configure_colormap(M)
         cmap_min, cmap_max = cmap_bds
         cmap_span = cmap_max - cmap_min
         
@@ -684,7 +688,7 @@ class WishartModelBasicsVisualization(PlottingTools):
             Indices specifying the slice of the last two dimensions of W to be visualized. Defaults to [0].
     
         """
-        cmap_bds = settings.cmap_bds if settings.cmap_bds else self._configure_colormap(W)
+        cmap_bds = settings.cmap_bds if settings.cmap_bds else self.configure_colormap(W)
         
         degree = W.shape[0]
         
@@ -798,7 +802,7 @@ class WishartModelBasicsVisualization(PlottingTools):
             Additional keyword arguments to override default plotting settings.
     
         """
-        cmap_bds = settings.cmap_bds if settings.cmap_bds else self._configure_colormap(U)
+        cmap_bds = settings.cmap_bds if settings.cmap_bds else self.configure_colormap(U)
         
         # Extract the number of finely sampled grid points.
         num_grid_fine = U.shape[0]

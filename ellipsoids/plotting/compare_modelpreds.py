@@ -14,12 +14,13 @@ import re
 import matplotlib.pyplot as plt
 from dataclasses import replace
 import os
+from analysis.utils_load import get_path
 from analysis.utils_load import select_file_and_get_path
 from plotting.wishart_predictions_plotting import WishartPredictionsVisualization
 from plotting.wishart_plotting import PlotSettingsBase 
 from plotting.wishart_predictions_plotting import Plot2DPredSettings
 #specify the file name
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 
 #%%
 #---------------------------------------------------------------------------

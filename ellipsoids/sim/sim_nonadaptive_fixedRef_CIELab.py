@@ -50,6 +50,7 @@ Debugging tip
 """
 
 import os
+from analysis.utils_load import get_path
 import numpy as np
 import pickle
 import dill as pickled
@@ -68,7 +69,7 @@ from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization
 from plotting.adaptive_sampling_plotting import Plot3DSamplingHTMLSettings,\
     SamplingRefCompPairVisualization_html
     
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 
 #%% 
 # -----------------------------------------------------------

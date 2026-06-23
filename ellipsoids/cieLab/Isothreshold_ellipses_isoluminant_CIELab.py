@@ -18,6 +18,7 @@ The logic:
 """
 
 import os
+from analysis.utils_load import get_path
 from scipy.io import loadmat
 import numpy as np
 import colour
@@ -29,7 +30,7 @@ from analysis.color_thres import color_thresholds
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate
 from plotting.wishart_plotting import PlotSettingsBase, PlottingTools
 from plotting.sim_CIELab_plotting import CIELabVisualization, Plot2DSinglePlaneSettings
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 
 #%%
 # -----------------------------------------------------------

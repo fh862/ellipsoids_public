@@ -109,6 +109,7 @@ import copy
 import re
 from dataclasses import replace
 import os
+from analysis.utils_load import get_path
 from core import optim, oddity_task
 from core.wishart_process import WishartProcessModel
 from core.model_predictions import wishart_model_pred
@@ -132,7 +133,7 @@ if not flag_running_on_hpc:
 # -----------------------------------------------------------
 # Define base directory (adjusted for local access; comment out if running on HPC)
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
-    '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+    get_path("dropbox_root_mac")
 
 subN = 1
 #dcfg = DatasetConfig_4D.human_isoluminant(base_dir, subN)

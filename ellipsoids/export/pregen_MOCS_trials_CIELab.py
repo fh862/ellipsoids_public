@@ -11,6 +11,7 @@ import dill as pickled
 import pandas as pd
 from copy import deepcopy
 import os
+from analysis.utils_load import get_path
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -26,7 +27,7 @@ from plotting.visualize_MOCS import PlotCondSettings, MOCSConditionsVisualizatio
 
 #define output directory for output files and figures
 stim_dims =3
-baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+baseDir = get_path("dropbox_root_mac")
 subfolder_name = 'Isoluminant plane' if stim_dims == 2 else '3D'
 
 #-----------------------------------------------------
@@ -62,7 +63,7 @@ if stim_dims == 2:
 elif stim_dims == 3:
     # Prompt user to select a fitted model file (pickled .pkl format)
     # Example path:
-    # '/Volumes/T9/.../ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits/'
+    # Example selected folder: ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits/
     # Example filename:
     # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.5_nBasisDeg5.pkl'
 

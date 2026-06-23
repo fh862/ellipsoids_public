@@ -25,6 +25,7 @@ import re
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from analysis.utils_load import get_path
 import matplotlib as mpl
 
 #%% 
@@ -33,7 +34,7 @@ import matplotlib as mpl
 # -------------------------------------------------------------------------
 
 # Base directory where all result files are stored
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 
 # -------------------------------------------------------------------------
 # SECTION 1: Load regression results across subjects and decay rates

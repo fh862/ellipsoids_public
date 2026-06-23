@@ -1,4 +1,4 @@
-# ellipsoids_public (dev)
+# ellipsoids_public
 
 Code accompanying:
 
@@ -68,6 +68,43 @@ python ellipsoids/scripts/download_osf_data.py
 ```
 
 Pass `--data-dir /your/preferred/path` to save elsewhere. The script uses only Python stdlib (no extra packages needed).
+
+---
+
+## Path configuration
+
+Some analysis and experiment scripts need local machine-specific roots for Dropbox data, network disks, and calibration files. These paths are stored in JSON files under `config/` instead of being hardcoded in each script.
+
+On macOS, edit:
+
+```text
+config/hardcoded_paths_mac.json
+```
+
+Example:
+
+```json
+{
+  "dropbox_root_mac": "/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/",
+  "dropbox_root_mac_elps": "/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/",
+  "network_disk_mac": "/Volumes/BrainardLabShares/brainardlab/",
+  "psychtoolbox_files": "/Users/fangfang/Documents/MATLAB/projects/ColorEllipsoids/FilesFromPsychtoolbox/"
+}
+```
+
+Scripts read these values through `analysis.utils_load`:
+
+```python
+from analysis.utils_load import get_path
+
+base_dir = get_path("dropbox_root_mac")
+```
+
+By default, macOS loads `hardcoded_paths_mac.json` and Windows loads `hardcoded_paths_windows.json`. To use a custom file, set:
+
+```bash
+export ELLIPSOIDS_PATH_CONFIG=/path/to/your_paths.json
+```
 
 ---
 

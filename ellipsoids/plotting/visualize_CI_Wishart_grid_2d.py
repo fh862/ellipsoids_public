@@ -42,6 +42,7 @@ import matplotlib.pyplot as plt
 from dataclasses import replace
 from copy import deepcopy
 import os
+from analysis.utils_load import get_path
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.color_thres import color_thresholds
 from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
@@ -52,7 +53,7 @@ from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI
 from dconfig.config_4Ddata import DatasetConfig_4D
 
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 
 #%%
 #---------------------------------------------------------------------------

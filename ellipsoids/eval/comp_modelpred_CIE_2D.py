@@ -47,6 +47,7 @@ from dataclasses import replace
 from copy import deepcopy
 from tqdm import trange
 import os
+from analysis.utils_load import get_path
 from analysis.utils_load import select_file_and_get_path
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI
@@ -55,7 +56,7 @@ from plotting.wishart_predictions_plotting import WishartPredictionsVisualizatio
 from plotting.wishart_plotting import PlotSettingsBase 
 
 #specify the file name
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 
 #%%
 # -------------------------------------------------------------------------

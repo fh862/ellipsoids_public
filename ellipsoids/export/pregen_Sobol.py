@@ -41,6 +41,7 @@ import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 import os
+from analysis.utils_load import get_path
 from analysis.color_thres import color_thresholds
 from analysis.MOCS_thresholds import sim_MOCS_trials
 from dconfig.config_pregenSobol import PregenSobolConfig
@@ -65,7 +66,7 @@ scfg = PregenSobolConfig.adaptation_round2()
 scfg.print_summary()
 
 # Base directory for data and calibration files
-baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+baseDir = get_path("dropbox_root_mac")
 
 # Initialize color transformation helper
 color_thres_data = color_thresholds(

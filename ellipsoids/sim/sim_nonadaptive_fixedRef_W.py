@@ -34,6 +34,7 @@ sample reference locations using Sobol sequences, see
 import numpy as np
 import dill as pickled
 import os
+from analysis.utils_load import get_path
 from dataclasses import replace
 import matplotlib.pyplot as plt
 #import functions from the other script
@@ -112,7 +113,7 @@ y = sim_trial.sim["resp_binary"].reshape(-1)
 # -----------------------------------------------------------
 # Visualize trial placement
 # -----------------------------------------------------------
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 output_figDir = os.path.join(base_dir, 'Simulation_FigFiles',f'{ndims}D', f'gt_W_sub{subN}')
 output_fileDir = os.path.join(base_dir, 'Simulation_DataFiles',f'{ndims}D', f'gt_W_sub{subN}')
 os.makedirs(output_figDir, exist_ok=True)

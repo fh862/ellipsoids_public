@@ -29,7 +29,6 @@ from analysis.utils_load import select_file_and_get_path, extract_sub_number
 # -----------------------------------------------------------
 # SECTION 1: load model fits
 # -----------------------------------------------------------    
-# '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
 # 'Experiment_DataFiles/pilot2/sub1/fits'
 # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub11_decayRate0.4_varScaler0.0003_nBasisDeg5.pkl'
 input_fileDir_fits, fits_file_name = select_file_and_get_path()
@@ -49,7 +48,7 @@ W_est = model_pred.W_est
 # -----------------------------------------------------------
 # SECTION 2: load response time
 # -----------------------------------------------------------
-# '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/Experiment_DataFiles/pilot2/sub1'
+# Example selected folder: ELPS_analysis/Experiment_DataFiles/pilot2/sub1
 # 'Unity_trial_data_sub1_CH_session1__2025-02-25_17-41-28_copy.csv'
 input_fileDir_csv, csv_file_name = select_file_and_get_path()
 subN = extract_sub_number(csv_file_name)

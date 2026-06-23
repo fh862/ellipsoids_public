@@ -38,6 +38,7 @@ import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from analysis.utils_load import get_path
 from dataclasses import replace
 from core import chebyshev
 from core.wishart_process import WishartProcessModel
@@ -46,7 +47,7 @@ from plotting.wishart_plotting import WishartModelBasicsVisualization, PlotSetti
     PlotWAllSettings
 
 # Set the output directory for figures
-baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+baseDir = get_path("dropbox_root_mac_elps")
                         
 #%% 
 # ---------------------------------------------------------------------

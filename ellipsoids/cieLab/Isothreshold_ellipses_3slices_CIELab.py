@@ -50,6 +50,7 @@ import numpy as np
 from dataclasses import replace
 import dill as pickled
 import os
+from analysis.utils_load import get_path
 from tqdm import tqdm
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate
 from analysis.simulations_CIELab import SimThresCIELab, strip_trailing_zeros
@@ -234,7 +235,7 @@ def run_one_setting(fixed_RGBvec, nGridPts_ref, color_diff_algorithm):
             pickled.dump(data_dict, f)
         
 #%%
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis'
+base_dir = get_path("dropbox_root_mac_elps")
 
 # Number of reference points along the "fixed RGB" axis (coarse grids)
 nGridPts_ref_list = [5, 7]

@@ -52,6 +52,7 @@ a Bernoulli response (1 = correct, 0 = incorrect).
 import numpy as np
 import dill as pickled
 import os
+from analysis.utils_load import get_path
 from dataclasses import replace
 import matplotlib.pyplot as plt
 from analysis.trial_placement import TrialPlacement_sobolRef_W, StimConfig_W_sobolref
@@ -135,7 +136,7 @@ y = sim_trial.sim["resp_binary"]
 # -----------------------------------------------------------
 # Visualize trial placement
 # -----------------------------------------------------------
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 output_figDir = os.path.join(base_dir, 'Simulation_FigFiles',f'{ndims*2}D', 'gt_Wishart')
 output_fileDir = os.path.join(base_dir, 'Simulation_DataFiles',f'{ndims*2}D', 'gt_Wishart')
 os.makedirs(output_figDir, exist_ok=True)

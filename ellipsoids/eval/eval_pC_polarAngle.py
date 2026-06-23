@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import os
+from analysis.utils_load import get_path
 from analysis.utils_load import load_expt_data
 from analysis.bin_pCorrect import BinnedPC
 
@@ -52,7 +53,7 @@ psyfield_dims = 4
 nSessions = 12 #selected session
 
 # Base directory where data lives. On HPC, prefer paths relative to the script.
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 path_str  = os.path.join(base_dir,'ELPS_analysis','Experiment_DataFiles',
                          'pilot2',f'sub{subN}') 
                          #4D_Expt_varyingBackground, 

@@ -63,6 +63,7 @@ from copy import deepcopy
 from tqdm import trange
 from dataclasses import replace
 import os
+from analysis.utils_load import get_path
 from analysis.MOCS_thresholds import compute_Wishart_based_pCorrect_atMOCS
 from dconfig.config_4Ddata import DatasetConfig_4D_MOCS
 from dconfig.config_6Ddata import DatasetConfig_6D
@@ -83,7 +84,7 @@ from plotting.mocs_wishart_interactive_html import MOCSWishartInteractiveHTMLPlo
 # --------------------------------------------------------------------------
 # Base directory where data lives. On HPC, prefer paths relative to the script.
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
-    '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+    get_path("dropbox_root_mac")
     
 # load best-fit Weibull Psychometric functions
 #'ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits'

@@ -23,10 +23,11 @@ import numpy as np
 import re
 import matplotlib.pyplot as plt
 import os
+from analysis.utils_load import get_path
 from analysis.utils_load import select_file_and_get_path
 
 #specify the file name
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 
 #%%
 #---------------------------------------------------------------------------

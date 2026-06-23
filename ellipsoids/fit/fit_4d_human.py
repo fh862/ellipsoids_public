@@ -43,6 +43,7 @@ from dataclasses import replace
 import numpy as np
 np.random.seed(None)
 import os
+from analysis.utils_load import get_path
 from core import optim, oddity_task
 from core.wishart_process import WishartProcessModel
 from core.model_predictions import wishart_model_pred
@@ -62,7 +63,7 @@ from dconfig.config_4Ddata import DatasetConfig_4D
 # -----------------------------------------------------------
 # Base directory where data lives. On HPC, prefer paths relative to the script.
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
-    '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+    get_path("dropbox_root_mac")
 
 subN = 1
 

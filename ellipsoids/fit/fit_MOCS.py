@@ -43,6 +43,7 @@ assessment of the agreement. Those stats will be computed again in
 import jax
 jax.config.update("jax_enable_x64", True)
 import os
+from analysis.utils_load import get_path
 import dill as pickled
 import numpy as np
 import re
@@ -64,7 +65,7 @@ from plotting.wishart_plotting import PlotSettingsBase
 # SECTION 1: Load data
 # -----------------------------------------------------------
 # this is the dir where we store our .db files
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 
 #change the knob here
 subN = 2

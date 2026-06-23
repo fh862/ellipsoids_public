@@ -7,13 +7,16 @@ Created on Wed Dec 18 21:10:09 2024
 """
 import tkinter as tk
 from tkinter import filedialog
+import json
 import os
+import platform
 import re
 import subprocess
 import sys
 from numbers import Integral
+from pathlib import Path
+from typing import Any
 import dill as pickled
-import jax.numpy as jnp
 import numpy as np
 import glob
 from scipy.io import loadmat
@@ -22,6 +25,66 @@ from colour.models import XYZ_to_xyY
 from .ellipses_tools import PointsOnEllipseQ
 
 #%%
+class PathConfig:
+    """Load machine-specific filesystem paths from repository JSON files."""
+
+    _config_cache: dict[str, Any] | None = None
+    _config_dir = Path(__file__).resolve().parents[2] / "config"
+
+    @classmethod
+    def default_path(cls) -> Path:
+        platform_name = os.environ.get("ELLIPSOIDS_PATH_PLATFORM", platform.system()).lower()
+        if platform_name.startswith("win"):
+            return cls._config_dir / "hardcoded_paths_windows.json"
+        return cls._config_dir / "hardcoded_paths_mac.json"
+
+    @classmethod
+    def active_path(cls) -> Path:
+        override = os.environ.get("ELLIPSOIDS_PATH_CONFIG")
+        return Path(override).expanduser() if override else cls.default_path()
+
+    @classmethod
+    def load(cls) -> dict[str, Any]:
+        if cls._config_cache is None:
+            cls._config_cache = cls._load_json(cls.active_path())
+        return cls._config_cache
+
+    @staticmethod
+    def _load_json(config_path: Path) -> dict[str, Any]:
+        with config_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @classmethod
+    def get(cls, name: str) -> str:
+        paths = cls.load()
+        if name in paths:
+            return paths[name]
+
+        if "ELLIPSOIDS_PATH_CONFIG" not in os.environ:
+            for config_path in (
+                cls._config_dir / "hardcoded_paths_mac.json",
+                cls._config_dir / "hardcoded_paths_windows.json",
+            ):
+                if config_path == cls.active_path():
+                    continue
+                fallback_paths = cls._load_json(config_path)
+                if name in fallback_paths:
+                    return fallback_paths[name]
+
+        raise KeyError(f"Path key {name!r} is not defined in {cls.active_path()}")
+
+
+def get_path(name: str) -> str:
+    """Return one configured path by key."""
+    return PathConfig.get(name)
+
+
+def _jnp():
+    import jax.numpy as jnp
+
+    return jnp
+
+
 def find_files_with_prefix(path, prefix, file_type="csv"):
     """
     Search for files in a given directory that start with a specific prefix 
@@ -309,6 +372,7 @@ class load_expt_data:
             - x1_MOCS (np.ndarray): Concatenated comparison stimuli across all sessions.
             - y_MOCS (np.ndarray): Concatenated participant responses across all sessions.
         """
+        jnp = _jnp()
 
         # Extract MOCS trial data from each session and store in separate lists
         xref_MOCS_list = [jnp.array(d['data_vis_MOCS'].xref_all) for d in data_allSessions]
@@ -393,6 +457,7 @@ class load_expt_data:
             - y_AEPsych (np.ndarray): Concatenated binary responses across all sessions.
             - time_elapsed (np.ndarray): Concatenated time elapsed across all sessions.
         """
+        jnp = _jnp()
 
         # Extract relevant data for AEPsych trials from each session
         time_elapsed_list = [d['expt_trials'].time_elapsed for d in data_allSessions]
@@ -434,6 +499,8 @@ class load_expt_data:
             - x1_pregSobol (np.ndarray): Concatenated comparison stimuli across all sessions.
             - y_pregSobol (np.ndarray): Concatenated binary responses across all sessions.
         """
+        jnp = _jnp()
+
         # Initialize lists to store pregenerated Sobol data from each session
         xref_pregSobol_list, x1_pregSobol_list, y_pregSobol_list = [], [], []
              
@@ -545,6 +612,7 @@ class load_expt_data:
         x1_btst : np.ndarray, Bootstrapped x1 data.
         y_btst : np.ndarray, Bootstrapped y data.
         """
+        jnp = _jnp()
         np.random.seed(seed)
     
         # Validate trials_split
@@ -606,6 +674,7 @@ class load_expt_data:
     
         Returns: check load_AEPsych_data
         """
+        jnp = _jnp()
     
         # Initialize lists to store results per session
         last_idx_included_AEPsych = []  # Index of the last AEPsych trial before the final MOCS trial
@@ -665,6 +734,7 @@ class load_expt_data:
             - x1_jnp (jnp.ndarray): Combined or AEPsych-only comparison stimuli.
             - y_jnp (jnp.ndarray): Combined or AEPsych-only response data.
         """
+        jnp = _jnp()
 
         if flag_combine:
             # Stack reference stimuli (xref), comparison stimuli (x1), and responses (y) from both datasets

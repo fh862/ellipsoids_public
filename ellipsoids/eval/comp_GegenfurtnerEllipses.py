@@ -49,6 +49,7 @@ import numpy as np
 import re
 from dataclasses import replace
 import os
+from analysis.utils_load import get_path
 import matplotlib.pyplot as plt
 from analysis.ellipses_tools import UnitCircleGenerate,convert_2Dcov_to_points_on_ellipse,\
     covMat_to_ellParamsQ, GegenfurtnerEll
@@ -61,7 +62,7 @@ from plotting.wishart_predictions_plotting import add_CI_ellipses
 
 # Base directory where data lives. On HPC, prefer paths relative to the script.
 base_dir = os.path.dirname(__file__) if flag_running_on_hpc else \
-    '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+    get_path("dropbox_root_mac")
             
 #%% step 1
 # load transformation matrices and data
@@ -77,7 +78,7 @@ if flag_running_on_hpc:
 else:
     # Prompt user to select a fitted model file (pickled .pkl format)
     # Example path:
-    # '/Volumes/T9/.../ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits/'
+    # Example selected folder: ELPS_analysis/Experiment_DataFiles/pilot2/sub1/fits/
     # Example filename:
     # 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.4_nBasisDeg5.pkl'
 

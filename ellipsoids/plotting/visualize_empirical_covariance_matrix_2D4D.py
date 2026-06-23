@@ -42,6 +42,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import os
+from analysis.utils_load import get_path
 import dill as pickled
 from copy import deepcopy
 from dataclasses import replace
@@ -55,7 +56,7 @@ from analysis.utils_load import select_file_and_get_path
 from analysis.MOCS_thresholds import sim_MOCS_trials
 
 # Define the file name and output directory for model fitting data files
-baseDir  = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+baseDir  = get_path("dropbox_root_mac")
 fig_output_sim = os.path.join(baseDir,'ELPS_analysis','WishartPractice_FigFiles')
 
 #%% 

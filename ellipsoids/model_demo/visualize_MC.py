@@ -16,6 +16,7 @@ from pathlib import Path
 import jax
 import numpy as np
 from plotly.offline.offline import get_plotlyjs
+from analysis.utils_load import get_path
 from analysis.ellipses_tools import ellParamsQ_to_covMat
 from core.oddity_task import simulate_oddity_one_trial
 
@@ -1365,7 +1366,7 @@ def build_html(config: dict[str, float | int | list[float]]) -> str:
 
 
 def main() -> None:
-    output_dir = Path('/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/WishartPractice_FigFiles/MC_simulations')
+    output_dir = Path(get_path("dropbox_root_mac_elps")) / "WishartPractice_FigFiles" / "MC_simulations"
     output_name = 'MC_interactive.html'
     output_dir.mkdir(parents=True, exist_ok=True)
     output_html = output_dir / output_name

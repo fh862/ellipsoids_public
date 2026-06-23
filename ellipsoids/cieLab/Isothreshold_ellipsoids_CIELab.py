@@ -38,6 +38,7 @@ General procedure
 """
 
 import os
+from analysis.utils_load import get_path
 import numpy as np
 import dill as pickled
 from tqdm import tqdm
@@ -156,7 +157,7 @@ for idx in tqdm(np.ndindex(*base_shape1), total=np.prod(base_shape1), desc="Comp
                                           )
                         
 #%% visualize ellipsoids
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 output_figDir = os.path.join(base_dir,'ELPS_analysis','Simulation_FigFiles', '3D',f'{color_diff_algorithm}')
 output_fileDir = os.path.join(base_dir, 'ELPS_analysis','Simulation_DataFiles', '3D',f'{color_diff_algorithm}')
 os.makedirs(output_figDir, exist_ok=True)

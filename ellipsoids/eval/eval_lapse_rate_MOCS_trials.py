@@ -25,12 +25,13 @@ import numpy as np
 from analysis.utils_load import load_expt_data 
 #from dconfig.config_6Ddata import DatasetConfig_6D
 from dconfig.config_4Ddata import DatasetConfig_4D
+from analysis.utils_load import get_path
 
 # ---------------------------------------------------------------------------
 # Load Data from All Sessions
 # ---------------------------------------------------------------------------
 # Base directory where experiment data is stored
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+base_dir = get_path("dropbox_root_mac")
 
 subN = 2
 

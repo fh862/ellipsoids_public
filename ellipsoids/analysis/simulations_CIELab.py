@@ -13,6 +13,7 @@ import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 import sys
 import os
+from analysis.utils_load import get_path
 import warnings
 from dataclasses import dataclass
 from enum import IntEnum
@@ -25,7 +26,7 @@ def patch_asscalar(a):
     return a.item()
 setattr(np, "asscalar", patch_asscalar)
 
-required_file_dir = "/Users/fangfang/Documents/MATLAB/projects/ColorEllipsoids/FilesFromPsychtoolbox/"
+required_file_dir = get_path("psychtoolbox_files")
     
 #%%
 class SimThresCIELab:

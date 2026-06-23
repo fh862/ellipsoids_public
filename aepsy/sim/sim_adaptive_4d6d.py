@@ -29,6 +29,7 @@ import importlib.metadata
 import matplotlib.pyplot as plt
 import dill as pickled
 import os
+from analysis.utils_load import get_path
 import numpy as np
 from dataclasses import replace
 from analysis.color_thres import color_thresholds
@@ -46,7 +47,7 @@ aepsych_version = importlib.metadata.version("aepsych")
 #define output directory for output files and figures
 stim_dims = 2
 psyfield_dims = 4
-baseDir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/'
+baseDir = get_path("dropbox_root_mac")
 
 # Top-level analysis folder
 root = os.path.join(baseDir, "META_analysis")
@@ -270,5 +271,4 @@ for var_name in variable_names:
 # Write the list of dictionaries to a file using pickle
 with open(full_path_file, 'wb') as f:
     pickled.dump(vars_dict, f)
-
 

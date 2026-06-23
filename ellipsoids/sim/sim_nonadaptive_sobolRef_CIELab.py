@@ -47,6 +47,7 @@ lie very close to the ground-truth threshold contour.
 """
 
 import os
+from analysis.utils_load import get_path
 import numpy as np
 import dill as pickled
 import matplotlib.pyplot as plt
@@ -60,7 +61,7 @@ from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization
 from plotting.wishart_plotting import PlotSettingsBase
 from plotting.trial_placement_nonadaptive_plotting import TrialPlacementVisualization,\
         PlotWeibullPMFSettings
-base_dir = '/Volumes/T9/Aguirre-Brainard Lab Dropbox/Fangfang Hong/ELPS_analysis/'
+base_dir = get_path("dropbox_root_mac_elps")
 
 #%% 
 # -----------------------------------------------------------

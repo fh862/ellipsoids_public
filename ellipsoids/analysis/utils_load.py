@@ -79,6 +79,26 @@ def get_path(name: str) -> str:
     return PathConfig.get(name)
 
 
+def load_pickle_with_jax_arrays_as_numpy(path):
+    """Load a dill pickle while reconstructing serialized JAX arrays as NumPy."""
+    import jax._src.array as jax_array
+
+    reconstruct_jax_array = jax_array._reconstruct_array
+
+    def reconstruct_as_numpy(fun, args, arr_state, aval_state):
+        del aval_state
+        np_value = fun(*args)
+        np_value.__setstate__(arr_state)
+        return np_value
+
+    jax_array._reconstruct_array = reconstruct_as_numpy
+    try:
+        with open(path, "rb") as f:
+            return pickled.load(f)
+    finally:
+        jax_array._reconstruct_array = reconstruct_jax_array
+
+
 def _jnp():
     import jax.numpy as jnp
 
@@ -384,6 +404,62 @@ class load_expt_data:
                                          [xref_MOCS_list, x1_MOCS_list, y_MOCS_list])
         
         return xref_MOCS_list, x1_MOCS_list, y_MOCS_list, xref_MOCS, x1_MOCS, y_MOCS
+
+    def assign_trials_to_conditions(xref_trials, x1_trials,
+                                    xref_by_condition, x1_by_condition,
+                                    atol = 1e-6):
+        """Assign trials to fixed conditions using their reference and comparison #1.
+
+        Parameters
+        ----------
+        xref_trials : array-like, shape (n_trials, n_dims)
+            Reference stimulus for each trial.
+        x1_trials : array-like, shape (n_trials, n_dims)
+            Fixed comparison #1 for each trial.
+        xref_by_condition : array-like, shape (n_conditions, n_dims)
+            Reference stimulus defining each condition. Row order defines the
+            returned zero-based condition indices.
+        x1_by_condition : array-like, shape (n_conditions, n_dims)
+            Fixed comparison #1 defining each condition.
+        atol : float, optional
+            Absolute tolerance used to match stimulus coordinates. Relative
+            tolerance is fixed at zero. Default is 1e-6.
+
+        Returns
+        -------
+        np.ndarray, shape (n_trials,)
+            Zero-based condition index for every trial.
+
+        Raises
+        ------
+        ValueError
+            If any trial matches zero or multiple conditions.
+        """
+        xref_trials = np.asarray(xref_trials)
+        x1_trials = np.asarray(x1_trials)
+        xref_by_condition = np.asarray(xref_by_condition)
+        x1_by_condition = np.asarray(x1_by_condition)
+
+        matches = (
+            np.all(np.isclose(xref_trials[:, None, :],
+                              xref_by_condition[None, :, :],
+                              atol = atol, rtol = 0), axis = -1)
+            &
+            np.all(np.isclose(x1_trials[:, None, :],
+                              x1_by_condition[None, :, :],
+                              atol = atol, rtol = 0), axis = -1)
+        )
+        match_counts = matches.sum(axis = 1)
+
+        if np.any(match_counts != 1):
+            unmatched = np.where(match_counts == 0)[0]
+            ambiguous = np.where(match_counts > 1)[0]
+            raise ValueError(
+                f"Each trial must match exactly one condition; found "
+                f"{unmatched.size} unmatched and {ambiguous.size} ambiguous trials."
+            )
+
+        return matches.argmax(axis = 1)
         
     def org_MOCS_by_condition(xref_MOCS, x1_MOCS, y_MOCS, leave_out_conditions = []):
         """
@@ -439,99 +515,129 @@ class load_expt_data:
             responses_MOCS, nLevels_MOCS, nTrials_MOCS, refStimulus_MOCS_leaveout, \
             compStimulus_MOCS_leaveout, responses_MOCS_leaveout
     
-    def load_AEPsych_data(data_allSessions):
-        """
-        Extract and preprocess AEPsych trial data from all sessions.
+    def load_AEPsych_data(data_allSessions, include_x2=False):
+        """Load recorded AEPsych trials, optionally including comparison #2.
 
-        Parameters:
-        data_allSessions (list of dict): List containing data from multiple experimental sessions.
+        Parameters
+        ----------
+        data_allSessions : list of dict
+            Nonempty list of loaded session dictionaries, in the desired order.
+        include_x2 : bool, optional
+            False preserves the original eight-output interface and does not
+            require x2_all. True also loads x2_all for suprathreshold trials:
+            x1 is the fixed comparison for each condition, and x2 is the varying
+            comparison. A response of 1 means x2 was judged more different from
+            xref; 0 means x1 was chosen.
 
-        Returns:
-        tuple: 
-            - xref_AEPsych_list (list of jnp.ndarray): List of reference stimuli arrays from each session.
-            - x1_AEPsych_list (list of jnp.ndarray): List of comparison stimuli arrays from each session.
-            - y_AEPsych_list (list of jnp.ndarray): List of binary response arrays from each session.
-            - time_elapsed_list (list of np.ndarray): List of time elapsed arrays from each session.
-            - xref_AEPsych (np.ndarray): Concatenated reference stimuli across all sessions.
-            - x1_AEPsych (np.ndarray): Concatenated comparison stimuli across all sessions.
-            - y_AEPsych (np.ndarray): Concatenated binary responses across all sessions.
-            - time_elapsed (np.ndarray): Concatenated time elapsed across all sessions.
+        Returns
+        -------
+        tuple
+            With include_x2=False:
+            (xref_list, x1_list, y_list, time_list, xref, x1, y, time).
+            With include_x2=True:
+            (xref_list, x1_list, x2_list, y_list, time_list,
+             xref, x1, x2, y, time).
+            Stimulus and response lists contain one JAX array per session;
+            time_list retains each session's original time_elapsed array.
+            Concatenated outputs are NumPy arrays, in input session order and
+            stored trial order. Stimuli have shape (n_trials, n_dims), and
+            responses have shape (n_trials,). No trials are filtered here.
+            Pregenerated fallback Sobol trials are loaded separately with
+            load_pregSobol_data.
+
+        Raises
+        ------
+        ValueError
+            If no sessions are supplied.
+        AttributeError
+            If a required trial attribute is missing, including x2_all when
+            include_x2=True.
         """
+        if len(data_allSessions) == 0:
+            raise ValueError("At least one session is required to load AEPsych data.")
+
         jnp = _jnp()
+        # Keep the original field order unless comparison #2 is requested.
+        fields = ["xref_all", "x1_all"]
+        if include_x2:
+            fields.append("x2_all")
+        fields.append("binaryResp_all")
+        data_lists = [[] for _ in fields]
+        time_elapsed_list = []
 
-        # Extract relevant data for AEPsych trials from each session
-        time_elapsed_list = [d['expt_trials'].time_elapsed for d in data_allSessions]
-        xref_AEPsych_list = [jnp.array(d['expt_trials'].xref_all) for d in data_allSessions]
-        x1_AEPsych_list   = [jnp.array(d['expt_trials'].x1_all) for d in data_allSessions]
-        y_AEPsych_list    = [jnp.array(d['expt_trials'].binaryResp_all) for d in data_allSessions]
+        for session in data_allSessions:
+            trials = session["expt_trials"]
+            for field, values in zip(fields, data_lists):
+                values.append(jnp.array(getattr(trials, field)))
+            time_elapsed_list.append(trials.time_elapsed)
 
-        # Concatenate data across all sessions along axis 0
-        xref_AEPsych, x1_AEPsych, y_AEPsych, time_elapsed = \
-            map(lambda lst: np.concatenate(lst, axis=0), 
-                [xref_AEPsych_list, x1_AEPsych_list, y_AEPsych_list, time_elapsed_list])
+        # Return per-session lists followed by their concatenated arrays.
+        data_lists.append(time_elapsed_list)
+        combined = [np.concatenate(values, axis=0) for values in data_lists]
+        return (*data_lists, *combined)
 
-        return xref_AEPsych_list, x1_AEPsych_list, y_AEPsych_list, time_elapsed_list, \
-               xref_AEPsych, x1_AEPsych, y_AEPsych, time_elapsed
-               
-    def load_pregSobol_data(data_allSessions):
+    def load_pregSobol_data(data_allSessions, include_x2=False):
+        """Load pregenerated fallback Sobol trials with recorded responses.
+
+        These trials are separate from Sobol trials generated by AEPsych. Their
+        scheduling and number depend on the experiment. Unused pool entries have
+        NaN responses and are excluded using the same mask for every stimulus.
+
+        Parameters
+        ----------
+        data_allSessions : list of dict
+            Nonempty list of loaded session dictionaries, in the desired order.
+        include_x2 : bool, optional
+            If False (default), preserve the original six-output interface and
+            do not require an x2 field. If True, also load comparison #2 from
+            every session. For suprathreshold trials, x1 is the fixed comparison
+            for each condition and x2 is the varying comparison. Responses are
+            1 when x2 is judged more different from xref, and 0 when x1 is chosen.
+
+        Returns
+        -------
+        tuple
+            With include_x2=False:
+            (xref_list, x1_list, y_list, xref, x1, y).
+            With include_x2=True:
+            (xref_list, x1_list, x2_list, y_list, xref, x1, x2, y).
+            Each *_list contains one JAX array per session; the remaining values
+            are NumPy arrays concatenated along the trial axis. Stimulus arrays
+            have shape (n_trials, n_dims), and responses have shape (n_trials,).
+            Sessions without recorded responses retain empty arrays in the lists.
+            Ordering follows the input sessions and their stored pool indices,
+            rather than reconstructing the interleaved presentation sequence.
+
+        Raises
+        ------
+        ValueError
+            If no sessions are supplied.
+        KeyError
+            If a required data field is missing, including x2 when requested.
         """
-        Extract and preprocess pregenerated Sobol trial data from multiple sessions.
+        if len(data_allSessions) == 0:
+            raise ValueError("At least one session is required to load Sobol data.")
 
-        Unlike AEPsych generated Sobol trials—which are always 900 in number and 
-        appear at the beginning of each session—the pregenerated Sobol trials in this 
-        dataset are dynamically interleaved throughout a session. Their number varies 
-        both across sessions and across subjects.
-
-        These pregenerated trials are inserted whenever the MOCS trials get more than 
-        4 trials ahead of the AEPsych trials. Instead of advancing MOCS further, we 
-        insert one of the pregenerated Sobol trials. Although we generated 1,200 
-        Sobol trials per session, only ~50 are typically used in each session.
-
-        Parameters:
-        data_allSessions (list of dict): List containing data from multiple experimental sessions.
-
-        Returns:
-        tuple: 
-            - xref_pregSobol_list (list of jnp.ndarray): List of reference stimuli arrays from each session.
-            - x1_pregSobol_list (list of jnp.ndarray): List of comparison stimuli arrays from each session.
-            - y_pregSobol_list (list of jnp.ndarray): List of binary response arrays from each session.
-            - xref_pregSobol (np.ndarray): Concatenated reference stimuli across all sessions.
-            - x1_pregSobol (np.ndarray): Concatenated comparison stimuli across all sessions.
-            - y_pregSobol (np.ndarray): Concatenated binary responses across all sessions.
-        """
         jnp = _jnp()
+        # Field order determines both the per-session and concatenated outputs.
+        fields = ["xref", "x1", "x2", "binaryResp"] if include_x2 else [
+            "xref", "x1", "binaryResp"
+        ]
+        data_lists = [[] for _ in fields]
 
-        # Initialize lists to store pregenerated Sobol data from each session
-        xref_pregSobol_list, x1_pregSobol_list, y_pregSobol_list = [], [], []
-             
-        # Loop through each session's data
-        for i in range(len(data_allSessions)):
-            d = data_allSessions[i]
-            # Access the pregenerated Sobol data for that session
-            d_pregSobol = d['sim_interleaved_trial_sequence'].pregenerated_Sobol
+        for session in data_allSessions:
+            sobol = session["sim_interleaved_trial_sequence"].pregenerated_Sobol
+            responses = jnp.array(sobol["binaryResp"])
+            valid_indices = jnp.where(~jnp.isnan(responses))[0]
 
-            # Extract binary responses and stimuli
-            y_pregSobol_i = jnp.array(d_pregSobol['binaryResp'])   # shape: (n_trials,)
-            xref_pregSobol_i = jnp.array(d_pregSobol['xref'])      # shape: (n_trials, dim)
-            x1_pregSobol_i = jnp.array(d_pregSobol['x1'])          # shape: (n_trials, dim)
+            # Apply identical trial selection to responses and all comparisons.
+            for field, values in zip(fields, data_lists):
+                array = responses if field == "binaryResp" else jnp.array(sobol[field])
+                values.append(array[valid_indices])
 
-            # Identify indices where the binary response is not NaN
-            mask = ~jnp.isnan(y_pregSobol_i)
-            float_indices = jnp.where(mask)[0]  # Indices with valid float values       
-            
-            # Append only valid (non-NaN) trials to the corresponding lists
-            xref_pregSobol_list.append(xref_pregSobol_i[float_indices])
-            x1_pregSobol_list.append(x1_pregSobol_i[float_indices])
-            y_pregSobol_list.append(y_pregSobol_i[float_indices])
+        combined = [np.concatenate(values, axis=0) for values in data_lists]
+        return (*data_lists, *combined)
 
-        # Concatenate all valid trials from each session into full arrays
-        xref_pregSobol, x1_pregSobol, y_pregSobol = \
-            map(lambda lst: np.concatenate(lst, axis=0), 
-                [xref_pregSobol_list, x1_pregSobol_list, y_pregSobol_list])     
-        
-        return xref_pregSobol_list, x1_pregSobol_list, y_pregSobol_list,\
-            xref_pregSobol, x1_pregSobol, y_pregSobol
-            
     def load_combine_AEPsych_pregSobol(data_allSessions):
         """
         Loads and combines AEPsych trials with pre-generated Sobol trials, if available.
@@ -645,107 +751,6 @@ class load_expt_data:
             y_btst[start_idx:end_idx] = y[sample_indices]
     
         return jnp.array(xref_btst), jnp.array(x1_btst), jnp.array(y_btst), sampled_indices_btst
-               
-    def load_AEPsych_data_before_last_MOCS(data_allSessions):
-        """
-        Extract and preprocess AEPsych trial data from all sessions,
-        **excluding any AEPsych trials that occurred after the last MOCS trial** 
-        within each session.
-
-        This function is a specialized version of `load_AEPsych_data`, designed 
-        specifically for subject #1 during the pilot study. In this early version 
-        of the experiment, MOCS trials were presented first and not interleaved 
-        with AEPsych trials near the end of the session. This may have caused 
-        biases or inconsistencies in threshold estimates.
-
-        By trimming the AEPsych trials that came after the last MOCS trial, this 
-        method allows testing the hypothesis that these late AEPsych trials 
-        contributed to the mismatch in thresholds between the two methods.
-
-        Important:
-        - This method is intended **only for subject #1**.
-        - For all other subjects, AEPsych and MOCS trials were properly interleaved,
-          so this function is not needed.
-        - If subject #1 re-runs the experiment using the final interleaved version, 
-          this function will no longer be necessary.
-    
-        Parameters:
-        data_allSessions (list of dict): List containing data from multiple experimental sessions.
-    
-        Returns: check load_AEPsych_data
-        """
-        jnp = _jnp()
-    
-        # Initialize lists to store results per session
-        last_idx_included_AEPsych = []  # Index of the last AEPsych trial before the final MOCS trial
-        nTrials_included_AEPsych = []   # Number of AEPsych trials included
-        time_elapsed_list = []          # List of time elapsed arrays per session
-        xref_AEPsych_list = []          # List of reference stimuli arrays per session
-        x1_AEPsych_list = []            # List of comparison stimuli arrays per session
-        y_AEPsych_list = []             # List of response arrays per session
-    
-        # Iterate through all sessions
-        for idx, d in enumerate(data_allSessions):
-            # Extract the trial sequence array for the session
-            sequence_array = d['sim_interleaved_trial_sequence'].final_sequence[0]
-    
-            # Find the index of the last 'MOCS' trial in the sequence
-            last_mocs_index = next((i for i in range(len(sequence_array) - 1, -1, -1) 
-                                    if sequence_array[i].startswith('MOCS')), None)
-    
-            # Define the number of AEPsych trials to include (all trials up to the last MOCS trial)
-            last_idx_included_AEPsych.append(last_mocs_index + 1)
-    
-            # Extract the trial number from the last included AEPsych trial
-            match = re.search(r'AEPsych_(\d+)', sequence_array[last_idx_included_AEPsych[-1]])
-            trial_num = int(match.group(1)) if match else None  # Convert to integer if found, otherwise None
-    
-            # Store the number of AEPsych trials included for this session
-            nTrials_included_AEPsych.append(trial_num)
-    
-            # Extract and truncate AEPsych trial data up to the last included trial
-            time_elapsed_list.append(d['expt_trials'].time_elapsed[:trial_num])
-            xref_AEPsych_list.append(jnp.array(d['expt_trials'].xref_all[:trial_num]))
-            x1_AEPsych_list.append(jnp.array(d['expt_trials'].x1_all[:trial_num]))
-            y_AEPsych_list.append(jnp.array(d['expt_trials'].binaryResp_all[:trial_num]))
-    
-        # Concatenate data across all sessions along axis 0
-        xref_AEPsych, x1_AEPsych, y_AEPsych, time_elapsed = map(
-            lambda lst: np.concatenate(lst, axis=0), 
-            [xref_AEPsych_list, x1_AEPsych_list, y_AEPsych_list, time_elapsed_list]
-        )
-    
-        return xref_AEPsych_list, x1_AEPsych_list, y_AEPsych_list, time_elapsed_list, \
-               xref_AEPsych, x1_AEPsych, y_AEPsych, time_elapsed
-    
-    def combine_AEPsych_MOCS(data_AEPsych, data_MOCS, flag_combine=True):
-        """
-        Combine AEPsych and MOCS datasets if the flag is set to True. 
-        Otherwise, return only AEPsych data.
-
-        Parameters:
-        data_AEPsych (tuple of jnp.ndarray): AEPsych data containing (xref, x1, y).
-        data_MOCS (tuple of jnp.ndarray): MOCS data containing (xref, x1, y).
-        flag_combine (bool, optional): Whether to combine AEPsych and MOCS data. Defaults to True.
-
-        Returns:
-        tuple:
-            - xref_jnp (jnp.ndarray): Combined or AEPsych-only reference stimuli.
-            - x1_jnp (jnp.ndarray): Combined or AEPsych-only comparison stimuli.
-            - y_jnp (jnp.ndarray): Combined or AEPsych-only response data.
-        """
-        jnp = _jnp()
-
-        if flag_combine:
-            # Stack reference stimuli (xref), comparison stimuli (x1), and responses (y) from both datasets
-            xref_jnp = jnp.vstack((data_AEPsych[0], data_MOCS[0]))  # Vertical stack for 2D data
-            x1_jnp   = jnp.vstack((data_AEPsych[1], data_MOCS[1]))  # Vertical stack for 2D data
-            y_jnp    = jnp.hstack((data_AEPsych[2], data_MOCS[2]))  # Horizontal stack for 1D response data
-        else:
-            # Use only AEPsych data without modification
-            xref_jnp, x1_jnp, y_jnp = data_AEPsych
-
-        return xref_jnp, x1_jnp, y_jnp
 
 #%%        
 class load_util_files:

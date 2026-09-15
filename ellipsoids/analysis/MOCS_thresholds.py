@@ -293,11 +293,13 @@ class fit_PMF_MOCS_trials():
             # range.
             tol = 1e-6
             for param_idx, (param_val, (lb, ub)) in enumerate(zip(bestfit_result.x, self.bounds)):
-                if abs(param_val - lb) < tol or abs(param_val - ub) < tol:
-                    print(
-                        f"Warning: fitted Weibull parameter index {param_idx}="
-                        f"{param_val:.6g} is at or very near its bounds [{lb}, {ub}]."
-                    )
+                for bound_name, bound_val in (("lower", lb), ("upper", ub)):
+                    if abs(param_val - bound_val) < tol:
+                        print(
+                            f"Warning: fitted Weibull parameter index {param_idx}="
+                            f"{param_val:.6g} is at or very near its {bound_name} bound "
+                            f"{bound_val:.6g} (bounds [{lb}, {ub}])."
+                        )
             return bestfit_result
         else:
             # Raise an error if all attempts fail

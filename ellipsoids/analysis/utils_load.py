@@ -405,30 +405,34 @@ class load_expt_data:
         
         return xref_MOCS_list, x1_MOCS_list, y_MOCS_list, xref_MOCS, x1_MOCS, y_MOCS
 
-    def assign_trials_to_conditions(xref_trials, x1_trials,
-                                    xref_by_condition, x1_by_condition,
-                                    atol = 1e-6):
-        """Assign trials to fixed conditions using their reference and comparison #1.
+    def assign_trials_to_conditions(xref_trials, xref_by_condition = None,
+                                    trial_arrays = None, atol = 1e-6):
+        """Assign trials by reference and optionally group aligned trial arrays.
 
         Parameters
         ----------
         xref_trials : array-like, shape (n_trials, n_dims)
-            Reference stimulus for each trial.
-        x1_trials : array-like, shape (n_trials, n_dims)
-            Fixed comparison #1 for each trial.
-        xref_by_condition : array-like, shape (n_conditions, n_dims)
-            Reference stimulus defining each condition. Row order defines the
-            returned zero-based condition indices.
-        x1_by_condition : array-like, shape (n_conditions, n_dims)
-            Fixed comparison #1 defining each condition.
+            Reference stimulus for each trial; supports both 2D and 3D stimuli.
+        xref_by_condition : array-like, shape (n_conditions, n_dims), optional
+            Reference defining each condition, in the desired condition order.
+            If omitted, uses np.unique(xref_trials, axis=0) and its sorted order.
+        trial_arrays : list or tuple of array-like, optional
+            Arrays to group, e.g., [x1_trials, x2_trials, y]. Each array must have
+            n_trials rows aligned with xref_trials; remaining dimensions may vary.
         atol : float, optional
             Absolute tolerance used to match stimulus coordinates. Relative
             tolerance is fixed at zero. Default is 1e-6.
 
         Returns
         -------
-        np.ndarray, shape (n_trials,)
-            Zero-based condition index for every trial.
+        np.ndarray or tuple
+            With no trial arrays (None or []), returns condition_idx, an array of
+            zero-based condition indices in original trial order.
+            Otherwise returns (condition_idx, *grouped_arrays), in input array
+            order. Each grouped array is a list with one array per condition;
+            trial order is preserved within each group. Empty groups are retained.
+            For example, [x1_trials, x2_trials, y] yields
+            (condition_idx, x1_trials_sorted, x2_trials_sorted, y_sorted).
 
         Raises
         ------
@@ -436,19 +440,14 @@ class load_expt_data:
             If any trial matches zero or multiple conditions.
         """
         xref_trials = np.asarray(xref_trials)
-        x1_trials = np.asarray(x1_trials)
+        if xref_by_condition is None:
+            xref_by_condition = np.unique(xref_trials, axis = 0)
         xref_by_condition = np.asarray(xref_by_condition)
-        x1_by_condition = np.asarray(x1_by_condition)
 
-        matches = (
-            np.all(np.isclose(xref_trials[:, None, :],
-                              xref_by_condition[None, :, :],
-                              atol = atol, rtol = 0), axis = -1)
-            &
-            np.all(np.isclose(x1_trials[:, None, :],
-                              x1_by_condition[None, :, :],
-                              atol = atol, rtol = 0), axis = -1)
-        )
+        # Compare every trial reference with every condition across all coordinates.
+        matches = np.all(np.isclose(xref_trials[:, None, :],
+                                    xref_by_condition[None, :, :],
+                                    atol = atol, rtol = 0), axis = -1)
         match_counts = matches.sum(axis = 1)
 
         if np.any(match_counts != 1):
@@ -459,7 +458,17 @@ class load_expt_data:
                 f"{unmatched.size} unmatched and {ambiguous.size} ambiguous trials."
             )
 
-        return matches.argmax(axis = 1)
+        condition_idx = np.nonzero(matches)[1]
+        if trial_arrays is None or len(trial_arrays) == 0:
+            return condition_idx
+
+        # Apply the same grouping to each supplied array, preserving trial pairing.
+        grouped_arrays = []
+        for array in trial_arrays:
+            array = np.asarray(array)
+            grouped_arrays.append([array[condition_idx == c]
+                                   for c in range(len(xref_by_condition))])
+        return condition_idx, *grouped_arrays
         
     def org_MOCS_by_condition(xref_MOCS, x1_MOCS, y_MOCS, leave_out_conditions = []):
         """

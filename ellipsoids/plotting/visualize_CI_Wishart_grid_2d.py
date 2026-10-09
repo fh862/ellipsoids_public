@@ -10,8 +10,9 @@ This script supports two related visualization workflows for Wishart model predi
 (1) Bootstrap confidence intervals (CI) within a single subject
     - Solid contour lines: model predictions fit to the original dataset.
     - Shaded regions: model predictions fit to N bootstrap-resampled datasets.
-    - Bootstrap datasets whose Normalized Bures Similarity (NBS) scores fall in
-      the bottom 5% are excluded before computing the CI.
+    - Bootstrap datasets are ranked by either Normalized Bures Similarity (NBS)
+      or affine-invariant Riemannian metric (AIRM), and the worst 5% are
+      excluded before computing the CI.
 
 (2) Cross-subject confidence intervals (CI) across multiple subjects
     - No solid contour lines (no single “reference” subject).
@@ -26,7 +27,8 @@ Notes on implementation:
   for typical use cases.
 
 See also:
-- eval_NBS_org_btst.py (this needs to be run before plotting 95% bootstrapped CI)
+- eval_NBS_org_btst.py (legacy filename; set its ``metric`` variable to match
+  ``btst_ranking_metric`` before plotting a 95% bootstrap CI)
 - visualize_bootstrap_CI_atMOCS.py
 
 """
@@ -37,6 +39,7 @@ import jax.numpy as jnp
 import dill as pickled
 from tqdm import trange
 import numpy as np
+import colour
 import re
 import matplotlib.pyplot as plt
 from dataclasses import replace
@@ -45,10 +48,11 @@ import os
 from analysis.utils_load import get_path
 from analysis.utils_load import select_file_and_get_path, extract_sub_number
 from analysis.color_thres import color_thresholds
+from analysis.simulations_CIELab import SimThresCIELab
 from plotting.wishart_predictions_plotting import WishartPredictionsVisualization,\
     add_CI_ellipses, Plot2DPredSettings
 from core.model_predictions import rerun_model_pred_wExisting_model
-from plotting.wishart_plotting import PlotSettingsBase 
+from plotting.wishart_plotting import PlotSettingsBase, add_adaptive_legend
 from analysis.conf_interval import find_inner_outer_contours_for_gridRefs, \
     find_btst_dataset_within_CI
 from dconfig.config_4Ddata import DatasetConfig_4D
@@ -61,15 +65,15 @@ base_dir = get_path("dropbox_root_mac")
 # --------------------------------------------------------------------------
 # Select the file containing the model fits
 # Navigate to the directory: ELPS_analysis/Experiment_DataFiles/sub#
-#'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.5_nBasisDeg5.pkl'
+#'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub1_decayRate0.4_nBasisDeg5.pkl'
 
 # or simulated subject based on CIE1994
 # 'META_analysis/ModelFitting_DataFiles/4dTask/CIE/sub1/decayRate0.5'
-# 'Fitted_byWishart_Isoluminant plane_4DExpt_300_300_300_5100_AEPsychSampling_EAVC_decayRate0.5_nBasisDeg5_sub1.pkl'
+# 'Fitted_byWishart_Isoluminant plane_4DExpt_300_300_300_5100_AEPsychSampling_EAVC_decayRate0.4_nBasisDeg5_sub1.pkl'
 
 # or data from the adaptation experiment with different adapting backgrounds
 # 'ELPS_analysis/Experiment_DataFiles/4D_Expt_varyingBackground/sub12/fits'
-# 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub12_decayRate0.5_nBasisDeg5_blue.pkl' or gray
+# 'Fitted_ColorDiscrimination_4dExpt_Isoluminant plane_sub12_decayRate0.4_nBasisDeg5_blue.pkl' or gray
 
 # dichromats
 # 'ELPS_analysis/Experiment_DataFiles/4D_Expt_dichromats/sub15/fits'
@@ -121,7 +125,7 @@ Assumptions:
 
 """
 
-num_grid_pts_desired = dcfg.num_grid_pts2
+num_grid_pts_desired = dcfg.num_grid_pts
 flag_append_data = False
 
 # Construct the key name based on the desired grid size
@@ -168,6 +172,7 @@ else:
 ##############################################################################
 flag_load_other_subjects = False  # <-- Set True if loading different subjects
 subject_list = [1,2,4,6,7,8,10,11]         # Only used if loading other subjects
+btst_ranking_metric = "AIRM"  # "NBS" (higher is better) or "AIRM" (lower is better)
 ##############################################################################
 
 # Step 2: Select the bootstrapped data file (choose one as a reference)
@@ -194,18 +199,15 @@ if flag_load_other_subjects:
 else:
     nDatasets = 120  # e.g., 120 bootstrap datasets
 
-# Step 4: Pre-allocate arrays for ellipse parameters and similarity scores
+# Step 4: Pre-allocate the ellipse-parameter array
 #   - params_ell[i, j, r, :] stores the ellipse parameters at grid location (i, j)
-#   - NBS_grid[i, j, r] stores the normalized Bures similarity between:
-#       Sigma_noise(original)[i, j]  vs  Sigma_noise(dataset r)[i, j]
-#     (NBS≈1 means nearly identical covariance shape/scale)
 grid_shape = grid.shape[:-1]
 params_ell_shape = grid_shape + (nDatasets, 5)
 params_ell = np.full(params_ell_shape, np.nan)
 
 full_path_others = []
 
-# Step 5: Loop over datasets (bootstraps or subjects), load predictions, and compute NBS
+# Step 5: Loop over datasets (bootstraps or subjects) and load predictions
 for r in trange(nDatasets):
     # 5a) Construct file path for dataset r
     if flag_load_other_subjects:
@@ -261,34 +263,54 @@ for r in trange(nDatasets):
                 with open(full_path_others_r, 'wb') as f:
                     pickled.dump(vars_dict_others, f)
 
-    # 5d) Store ellipse params and compute per-grid-point similarity
+    # 5d) Store ellipse parameters for this dataset
     for idx in np.ndindex(grid_shape):
         params_ell[*idx, r] = param_ell_r[idx[0]][idx[1]]
             
 #%%
 #---------------------------------------------------------------------------
-# SECTION 3: compute the normalized bures similarity score and 95% CI
+# SECTION 3: load bootstrap ranking scores and compute the 95% CI
 # --------------------------------------------------------------------------
 if not flag_load_other_subjects:
-    # ---------------------------------------------------------------------
-    # For each bootstrap dataset: compute / load NBS on the fine grid
-    # ---------------------------------------------------------------------
-    # NBS is computed per grid point between the original-fit covariance matrix
-    # and the bootstrap-fit covariance matrix. Results are cached per bootstrap
-    # pickle to avoid repeating expensive matrix operations.
-    NBS_sum = np.full((nDatasets,), np.nan)
+    ranking_config = {
+        "NBS": ("NBS_fine_grid", "descending"),
+        "AIRM": ("AIRM_fine_grid", "ascending"),
+    }
+    try:
+        ranking_key, sort_order = ranking_config[btst_ranking_metric.upper()]
+    except KeyError as exc:
+        raise ValueError(
+            'btst_ranking_metric must be either "NBS" or "AIRM".'
+        ) from exc
+
+    # Each evaluator caches a pointwise fine-grid score in every bootstrap
+    # pickle. Sum it to obtain one ranking score per bootstrap dataset.
+    metric_sum = np.full((nDatasets,), np.nan)
     
     params_ell_array = np.array(params_ell)
     for r in trange(nDatasets):
         with open(full_path_others[r], 'rb') as f:
             vars_dict_others = pickled.load(f)
-        NBS_sum[r] = np.sum(vars_dict_others["NBS_fine_grid"])
+        if ranking_key not in vars_dict_others:
+            raise KeyError(
+                f'{ranking_key!r} is missing from {full_path_others[r]!r}. '
+                f'Set metric = "{btst_ranking_metric.upper()}" in '
+                "eval_NBS_org_btst.py and run it for these bootstrap files "
+                "first."
+            )
+        metric_sum[r] = np.sum(vars_dict_others[ranking_key])
 
-    # Rank bootstraps by similarity to original fit and keep top 95%
+    if not np.all(np.isfinite(metric_sum)):
+        raise ValueError(
+            f"{ranking_key} produced a non-finite bootstrap ranking score."
+        )
+
+    # NBS keeps the largest scores; AIRM keeps the smallest distances.
     params_ell_within_CI, *_ = find_btst_dataset_within_CI(
-        NBS_sum, 
+        metric_sum,
         np.moveaxis(params_ell_array, -2, 0), 
-        CI_percent=0.95
+        CI_percent=0.95,
+        sort_order=sort_order,
     )
 
 else:
@@ -357,10 +379,17 @@ else:
 # --------------------------------------------------------------------------
 output_figDir_fits = os.path.join(input_fileDir_fits.replace('DataFiles', 'FigFiles'))
 if flag_load_other_subjects:
-    output_figDir_fits = re.sub(r'sub\d+', 'groupData', output_figDir_fits)
-    fig_name = re.sub(r'sub\d+', 'groupData', file_name[:-4])
+    output_figDir_fits = re.sub(
+        r"sub\d+",
+        "groupData",
+        output_figDir_fits,
+    )
+    fig_name = re.sub(r"sub\d+", "groupData", file_name[:-4])
 else:
-    fig_name = f"{file_name[:-4]}_wBtstCI{fig_name_ext}.pdf"
+    fig_name = f"{file_name[:-4]}_wBtstCI{fig_name_ext}"
+
+    if btst_ranking_metric.upper() == "AIRM":
+        fig_name += "_sortedAIRM"
 os.makedirs(output_figDir_fits, exist_ok=True)
 
 # Create a base plotting settings instance (shared across plots)
@@ -374,6 +403,7 @@ pred2D_settings = replace(pred2D_settings,
                           visualize_model_estimatedCov = False,
                           flag_rescale_axes_label = False,
                           visualize_model_pred = True,
+                          legend_off = False,
                           modelpred_alpha = 1,
                           ticks = np.linspace(-0.7, 0.7,5),
                           modelpred_lw = 0.75,
@@ -415,3 +445,4 @@ for idx in np.ndindex(grid.shape[:-1]):
 # Overlay model predictions (joint fits) onto the same axes
 wishart_pred_vis_wCI.plot_2D(grid, gt_ellipses= reference_ell_vis, 
                              ax=ax, settings=pred2D_settings)
+

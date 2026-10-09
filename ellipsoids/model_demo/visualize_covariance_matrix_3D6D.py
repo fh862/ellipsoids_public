@@ -81,7 +81,7 @@ model = WishartProcessModel(
     ndims,     # Number of stimulus dimensions
     1,     # Number of extra inner dimensions in `U`.
     3e-4,  # Scale parameter for prior on `W`.
-    0.8,   # decay rate on `W` 
+    0.4,   # decay rate on `W` 
     0,     # Diagonal term setting minimum variance for the ellipsoids.
     num_dims_cov= ndims
 )
@@ -103,7 +103,7 @@ U = model.compute_U(W_init, grid)
 
 # Compute covariance matrices Σ(x) on the fine and coarse grids.
 Sigmas_grid_fine = model.compute_Sigmas(U_fine)
-Sigmas_grid = model.compute_Sigmas(U) * 0.15
+Sigmas_grid = model.compute_Sigmas(U) * 0.5
 
 #%%
 # -----------------------------------------------------------
@@ -224,7 +224,13 @@ else:
 # SECTION 3: visualize the internal noise ellipsoids in html
 # -----------------------------------------------------------
 pltSettings_html = Plot3DPredHTMLSettings()
-pltSettings_html = replace(pltSettings_html, ell_scaler = 3) #enlarge it by a scaler of 3 for better visibility
+pltSettings_html = replace(pltSettings_html, 
+                           font_size=15,
+                           ell_scaler = 3, #enlarge it by a scaler of 3 for better visibility
+                           flag_no_cube_wall_background=False, 
+                           flag_rgb_axis_display=True,
+                           ticks=np.linspace(-1, 1, 5),
+                           ) 
 
 # Visualization helper with HTML settings
 vis_html = WishartPredictionsVisualization_html(settings=pltSettings_html)

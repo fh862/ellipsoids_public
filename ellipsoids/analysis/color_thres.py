@@ -77,6 +77,14 @@ class ColorTransFilenames:
     @property
     def M_RGBToLMS_filename(self) -> str:
         return f"M_RGBToLMS_{self.cal_tag}.csv"
+
+    @property
+    def M_DKLToConeInc_filename(self) -> str:
+        return f"M_DKLToConeInc_{self.cal_tag}.csv"
+
+    @property
+    def M_ConeIncToDKL_filename(self) -> str:
+        return f"M_ConeIncToDKL_{self.cal_tag}.csv"
     
 @dataclass(frozen=True)
 class ModelFitFilenames:
@@ -261,10 +269,6 @@ class color_thresholds():
                 color discrimination experiment on the isoluminant plane
                 (Hong et al., 2025, eLife).
     
-            - "07292025"
-                Calibration used for the pilot 6D color discrimination experiment
-                spanning the full 3D RGB cube.
-    
             - "10062025"
                 Calibration used for the adaptation experiment (gray vs. blue)
                 on the isoluminant plane.
@@ -272,6 +276,12 @@ class color_thresholds():
             - "11172025"
                 Same underlying calibration as "10062025", but with transformation
                 matrices corresponding to the L–S–isolating plane.
+                
+            - "02012026"
+                the formal 3D expt
+            
+            - "08272026"
+                the formal 2D interleaved suprathreshold expt
     
         Notes
         -----
@@ -283,9 +293,8 @@ class color_thresholds():
         - Locates and loads the DKL ↔ 2DW transformation matrices:
             * M_2DWToDKL
             * M_DKLTo2DW
-        - Locates and loads the LMS ↔ 2DW transformation matrices:
-            * M_2DWToLMS
-            * M_LMSTo2DW
+        - Locates and loads the RGB ↔ LMS transformation matrices.
+        - Optionally loads the cone-increment ↔ DKL transformation matrices.
 
         """
         
@@ -293,40 +302,55 @@ class color_thresholds():
         filenames = ColorTransFilenames(file_date)  # instantiate with default cal_date or provide one if needed
         print(f'The transformation matrices are based on the calibration done on {file_date}.')
         
-        try: 
-            self.file_path_M_2DWToRGB = self._find_exact_path(filenames.M_2DWToRGB_filename)
-            self.file_path_M_RGBTo2DW = self._find_exact_path(filenames.M_RGBTo2DW_filename)
-            self.M_2DWToRGB = np.array(pd.read_csv(self.file_path_M_2DWToRGB, header=None))
-            self.M_RGBTo2DW = np.array(pd.read_csv(self.file_path_M_RGBTo2DW, header=None))
-            print('Loaded transformation matrices between RGB and 2DW.')
-        except Exception:
-            # If files/paths aren't available for this calibration, keep as None
-            print("Transformation matrices between RGB and 2DW are not found for this calibration date.")
-            
-        # Try to load DKL matrices (optional)
+        (self.file_path_M_2DWToRGB, self.file_path_M_RGBTo2DW,
+         self.M_2DWToRGB, self.M_RGBTo2DW) = self._load_transformation_pair(
+            filenames.M_2DWToRGB_filename, filenames.M_RGBTo2DW_filename,
+            "RGB and 2DW"
+        )
+
+        (self.file_path_M_2DWToDKL, self.file_path_M_DKLTo2DW,
+         self.M_2DWToDKL, self.M_DKLTo2DW) = self._load_transformation_pair(
+            filenames.M_2DWToDKL_filename, filenames.M_DKLTo2DW_filename,
+            "2DW and DKL"
+        )
+
+        (self.file_path_M_LMSToRGB, self.file_path_M_RGBToLMS,
+         self.M_LMSToRGB, self.M_RGBToLMS) = self._load_transformation_pair(
+            filenames.M_LMSToRGB_filename, filenames.M_RGBToLMS_filename,
+            "RGB and LMS"
+        )
+
+        (self.file_path_M_ConeIncToDKL, self.file_path_M_DKLToConeInc,
+         self.M_ConeIncToDKL, self.M_DKLToConeInc) = self._load_transformation_pair(
+            filenames.M_ConeIncToDKL_filename, filenames.M_DKLToConeInc_filename,
+            "cone increments and DKL", expected_shape=(3, 3)
+        )
+
+    def _load_transformation_pair(self, forward_filename, inverse_filename,
+                                  description, expected_shape=None):
+        """Return both paths and matrices, or four Nones if either load fails.
+
+        Load into local variables so callers replace the entire pair together.
+        Optional shape/finite validation preserves the checks for DKL cone-
+        increment matrices without changing legacy matrix formats.
+        """
         try:
-            self.file_path_M_2DWToDKL = self._find_exact_path(filenames.M_2DWToDKL_filename)
-            self.file_path_M_DKLTo2DW = self._find_exact_path(filenames.M_DKLTo2DW_filename)
-    
-            self.M_2DWToDKL = np.array(pd.read_csv(self.file_path_M_2DWToDKL, header=None))
-            self.M_DKLTo2DW = np.array(pd.read_csv(self.file_path_M_DKLTo2DW, header=None))
-            print("Loaded transformation matrices between 2DW and DKL.")
-        except Exception:
-            # If files/paths aren't available for this calibration, keep as None
-            print("Transformation matrices between DKL and 2DW are not found for this calibration date.")
-            
-        # Try to load LMS transformation matrices (optional)
-        try:
-            self.file_path_M_LMSToRGB = self._find_exact_path(filenames.M_LMSToRGB_filename)
-            self.file_path_M_RGBToLMS = self._find_exact_path(filenames.M_RGBToLMS_filename)
-    
-            self.M_LMSToRGB = np.array(pd.read_csv(self.file_path_M_LMSToRGB, header=None))
-            self.M_RGBToLMS = np.array(pd.read_csv(self.file_path_M_RGBToLMS, header=None))
-            print("Loaded transformation matrices between RGB and LMS.")
-        except Exception:
-            # If files/paths aren't available for this calibration, keep as None
-            print("Transformation matrices between RGB and LMS are not found for this calibration date.")
-                    
+            forward_path = self._find_exact_path(forward_filename)
+            inverse_path = self._find_exact_path(inverse_filename)
+            forward_matrix = np.array(pd.read_csv(forward_path, header=None))
+            inverse_matrix = np.array(pd.read_csv(inverse_path, header=None))
+            if expected_shape is not None:
+                for path, matrix in ((forward_path, forward_matrix),
+                                     (inverse_path, inverse_matrix)):
+                    if matrix.shape != expected_shape or not np.isfinite(matrix).all():
+                        raise ValueError(f"{path} must be a finite {expected_shape} matrix.")
+        except Exception as error:
+            print(f"Could not load transformation matrices between {description}: {error}")
+            return None, None, None, None
+
+        print(f"Loaded transformation matrices between {description}.")
+        return forward_path, inverse_path, forward_matrix, inverse_matrix
+
     def get_data(self, key, dataset='CIE_data'):
         """
         Retrieves specific data stored within the class, either from CIE_data or Wishart_data.
@@ -634,6 +658,45 @@ class color_thresholds():
 
         w_after = self.rgb_to_2DW(rgb_after)
         return w_after[0] if was_1d else w_after
+
+    def W3D_to_DKL(self, s, bg):
+        """Convert 3D W-space stimuli to DKL relative to a W-space background.
+
+        Parameters
+        ----------
+        s : array-like, shape (3,) or (N, 3)
+            Stimulus coordinates, with rows indexing points in a batch.
+        bg : array-like, shape (3,) or matching s
+            Background in the same W-space units as s. A single vector is
+            broadcast across all stimuli.
+
+        Returns
+        -------
+        dkl : ndarray
+            DKL coordinates with the same shape as s. Axis order and scaling
+            are defined by the loaded M_ConeIncToDKL calibration matrix.
+
+        Notes
+        -----
+        Uses RGB = (W + 1) / 2, hence delta_RGB = (s - bg) / 2.
+        M_RGBToLMS maps these increments to cone increments, which are then
+        mapped by M_ConeIncToDKL (without dividing by background LMS).
+        The DKL matrix must be calibrated for the intended adapting background;
+        changing bg only changes the subtracted origin, not that calibration.
+        Values are not clipped. A shared ambient LMS offset cancels out.
+        """
+        s = np.asarray(s, dtype=float)
+        bg = np.asarray(bg, dtype=float)
+        if s.shape != (3,) and not (s.ndim == 2 and s.shape[1] == 3):
+            raise ValueError("s must have shape (3,) or (N, 3).")
+        if bg.shape != (3,) and bg.shape != s.shape:
+            raise ValueError("bg must have shape (3,) or match s.")
+        if not np.isfinite(s).all() or not np.isfinite(bg).all():
+            raise ValueError("s and bg must contain only finite values.")
+
+        diff_rgb = self.W_unit_to_N_unit(s) - self.W_unit_to_N_unit(bg)
+        cone_inc = self.M_RGBToLMS @ diff_rgb.T
+        return (self.M_ConeIncToDKL @ cone_inc).T
 
     #%% other useful methods                
     @staticmethod

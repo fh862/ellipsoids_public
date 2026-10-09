@@ -9,6 +9,38 @@ Created on Fri Aug  2 10:26:03 2024
 import numpy as np
 from analysis.ellipses_tools import covMat_to_ellParamsQ
 
+def compute_westin_indices(eigenvalues):
+    """Return prolate, oblate, and spherical indices from 3D eigenvalues.
+
+    Parameters
+    ----------
+    eigenvalues : array-like, shape (..., 3)
+        Nonnegative covariance eigenvalues in any order, with positive sum.
+        Values are sorted along the last axis so lambda_1 >= lambda_2 >= lambda_3.
+
+    Returns
+    -------
+    prolate_index, oblate_index, spherical_index : ndarray or numpy scalar
+        Westin barycentric coordinates, each with shape (...). Their sum is one.
+    """
+    eigenvalues = np.asarray(eigenvalues, dtype=float)
+    if eigenvalues.ndim == 0 or eigenvalues.shape[-1] != 3:
+        raise ValueError('eigenvalues must have shape (..., 3).')
+    if not np.all(np.isfinite(eigenvalues)) or np.any(eigenvalues < 0):
+        raise ValueError('eigenvalues must be finite and nonnegative.')
+    eigenvalues = np.sort(eigenvalues, axis=-1)[..., ::-1]
+    lambda_1 = eigenvalues[..., 0]
+    lambda_2 = eigenvalues[..., 1]
+    lambda_3 = eigenvalues[..., 2]
+    lambda_sum = lambda_1 + lambda_2 + lambda_3
+    if np.any(lambda_sum <= 0):
+        raise ValueError('Each eigenvalue triplet must have a positive sum.')
+
+    prolate_index = (lambda_1 - lambda_2) / lambda_sum
+    oblate_index = 2 * (lambda_2 - lambda_3) / lambda_sum
+    spherical_index = 3 * lambda_3 / lambda_sum
+    return prolate_index, oblate_index, spherical_index
+
 #%%
 def UnitCircleGenerate_3D(nTheta, nPhi):
     """

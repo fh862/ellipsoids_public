@@ -1,46 +1,42 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Jul 27 16:33:29 2024
+"""Color-threshold data loading and color-space transformations.
 
 @author: fangfang
 """
 
 import os
-import dill as pickled
-import numpy as np
-import pandas as pd
-from dataclasses import dataclass, field
-from typing import List
 import re
 import warnings
+from dataclasses import dataclass
+from functools import lru_cache
+
+import dill
+import numpy as np
+import pandas as pd
+
+
+@lru_cache(maxsize=None)
+def _index_files(base_path):
+    """Walk `base_path` once and map every file name to all of its paths."""
+    index = {}
+    for root, _, files in os.walk(base_path):
+        for file_name in files:
+            index.setdefault(file_name, []).append(os.path.join(root, file_name))
+    return index
+
 
 #%%
 @dataclass(frozen=True)
 class ColorTransFilenames:
-    """
+    """File names of the calibration matrices for one calibration date.
+
+    Parameters
+    ----------
     date : str
-        String specifying which calibration to use. This determines which
-        set of transformation matrices are loaded via `self._find_exact_path`.
-        Currently supported values:
-
-        - "02242025"
-            Calibration used to compute transformation matrices for the 4D
-            color discrimination experiment on the isoluminant plane
-            (Hong et al., 2025, eLife).
-
-        - "07292025"
-            Calibration used for the pilot 6D color discrimination experiment
-            spanning the full 3D RGB cube.
-
-        - "10062025"
-            Calibration used for the adaptation experiment (gray vs. blue)
-            on the isoluminant plane.
-
-        - "11172025"
-            Same underlying calibration as "10062025", but with transformation
-            matrices corresponding to the L–S–isolating plane.
-    
+        Calibration date as MMDDYYYY. See
+        `color_thresholds.load_transformation_matrix` for supported values.
+    prefix, suffix : str
+        Parts of the shared calibration tag, `{prefix}_{date}_{suffix}`.
     """
     date: str = "02242025"   # default MMDDYYYY
     prefix: str = "DELL"
@@ -93,12 +89,10 @@ class ModelFitFilenames:
     ellipsoid_3d_filename: str = 'Fitted_isothreshold_ellipsoids_sim240perCond_samplingNearContour_jitter0.3_seed0{cie}_bandwidth0.005_oddity.pkl'
 
     @staticmethod
-    def get_filename(plane_2D: str, cie_version: str = '', is_3d: bool = False, manual_input: bool = False) -> str:
+    def get_filename(plane_2D: str, cie_version: str = '', is_3d: bool = False) -> str:
         cie_suffix = '' if cie_version in {'', 'CIE1976'} else f'_{cie_version}'
         if is_3d:
             return ModelFitFilenames().ellipsoid_3d_filename.format(cie=cie_suffix)
-        if manual_input:
-            return None
         if plane_2D == 'Isoluminant plane':
             return ModelFitFilenames().isoluminant_filename.format(cie=cie_suffix)
         else:
@@ -121,45 +115,33 @@ class CIEDataFilenames:
         else:
             return CIEDataFilenames().ellipsoid_3d.format(cie=cie_suffix)
 
-@dataclass(frozen=True)
-class ManualFitFilenames:
-    file_name_part1: str = field(default='Fitted_isothreshold_isoluminant_plane_360trialsPerRef_9refs_AEPsychSampling_bandwidth0.005_sub', init=False)
 
-    @property
-    def full_names(self) -> List[str]:
-        return [f"{self.file_name_part1}{i}.pkl" for i in range(1, 6)]
-
-    @property
-    def simplified_names(self) -> List[str]:
-        return [f"Fitted_isothreshold_isoluminant_plane_sub{i}.pkl" for i in range(1, 6)]
-    
 #%%
 class color_thresholds():
-    def __init__(self, color_dimension, data_base_dir, plane_2D = "Isoluminant plane", 
-                 fixed_value = None, manual_input = False):
+    def __init__(self, color_dimension, data_base_dir, plane_2D="Isoluminant plane",
+                 fixed_value=None):
         """
-        Initializes the color_thresholds class with various configuration settings
-        for handling color dimensionality, either in 2D or 3D analysis.
+        Store the data location and, for 2D analyses, the color plane.
 
-        Args:
-            color_dimension (int): 
-                2 or 3, indicating the dimensionality of the color analysis.
-            data_base_dir (str): 
-                Base directory path where the data files are stored.
-            fixed_value (float, optional, N unit): 
-                Fixed parameter value used in file naming, relevant for 2D analysis.
-            plane_2D (str, optional): 
-                Specific plane ('GB plane', 'RB plane', 'RG plane', or 'Isoluminant plane') if in 2D.
-            fixed_color_dim (int, optional): 
-                Index of the fixed color dimension in 2D analyses.
+        Parameters
+        ----------
+        color_dimension : int
+            2 or 3, the dimensionality of the color analysis.
+        data_base_dir : str
+            Base directory searched (recursively) for data and calibration files.
+        plane_2D : str, optional
+            For 2D analyses: 'GB plane', 'RB plane', 'RG plane',
+            'Isoluminant plane', or 'LSisolating plane'. Sets
+            `fixed_color_dim` and `varying_color_dim`.
+        fixed_value : float, optional
+            Value (N unit) of the fixed RGB channel, used in 2D file names.
         """
         if color_dimension not in (2, 3):
             raise ValueError("color_dimension must be either 2 or 3.")
-        
+
         self.color_dimension = color_dimension
         self.fixed_value = fixed_value
         self.plane_2D = plane_2D
-        self.manual_input = manual_input
         self.base_path = data_base_dir
         self.CIE_data = dict()
         self.Wishart_data = dict()
@@ -184,17 +166,37 @@ class color_thresholds():
         
     def _find_exact_path(self, file_name):
         """
-        Searches for the exact path of a specified file within the base directory.
+        Return the path of `file_name` anywhere under the base directory.
+
+        The directory tree is indexed once per base directory and reused. If
+        the file is missing from the index (or was deleted since), the tree is
+        re-indexed once in case it changed. If several files share the name,
+        the first one found is returned with a warning.
         """
-        for root, dirs, files in os.walk(self.base_path):
-            if file_name in files:
-                return os.path.join(root, file_name)
-        raise FileNotFoundError(f"Data files directory not found for file {file_name}.")
+        paths = _index_files(self.base_path).get(file_name)
+        if not paths or not all(os.path.exists(path) for path in paths):
+            _index_files.cache_clear()
+            paths = _index_files(self.base_path).get(file_name)
+        if not paths:
+            raise FileNotFoundError(f"Data files directory not found for file {file_name}.")
+        if len(paths) > 1:
+            warnings.warn(
+                f"Found {len(paths)} files named {file_name}; using {paths[0]}.",
+                RuntimeWarning,
+            )
+        return paths[0]
 
     #%%
-    def load_CIE_data(self, CIE_version = '', num_grid_pts = 5):
+    def load_CIE_data(self, CIE_version='', num_grid_pts=5):
         """
-        Loads CIE data for color discrimination analysis, supporting both 2D and 3D data.
+        Load CIELab-simulated thresholds for the 2D or 3D case into `CIE_data`.
+
+        Parameters
+        ----------
+        CIE_version : {'', 'CIE1976', 'CIE1994', 'CIE2000'}, optional
+            Color-difference formula used to simulate the thresholds.
+        num_grid_pts : int, optional
+            Number of reference grid points per dimension.
         """
         if CIE_version not in {'', 'CIE1994', 'CIE1976', 'CIE2000'}:
             raise ValueError('Only CIE versions 1976, 1994, and 2000 are supported.')
@@ -208,12 +210,12 @@ class color_thresholds():
         file_path = self._find_exact_path(file_name)
         self.file_path_CIE_data = file_path
         with open(file_path, 'rb') as f:
-            data = pickled.load(f)
+            data = dill.load(f)
     
         stim_key = f'stim{self.color_dimension}D'
         results_key = f'results{self.color_dimension}D'
         
-        print(f"Loaded CIELab simulated data for {self.color_dimension}D case. \n"+\
+        print(f"Loaded CIELab simulated data for {self.color_dimension}D case.\n"
               f"Number of grid points = {num_grid_pts}")
         if self.color_dimension == 2 and self.plane_2D != 'Isoluminant plane':
             self.CIE_data[stim_key] = data[f'stim_grid{num_grid_pts}_fixedVal{self.fixed_value}']
@@ -224,84 +226,66 @@ class color_thresholds():
             
     def load_model_fits(self, CIE_version='CIE1994'):
         """
-        Loads model fitting data based on the specified color plane and CIE version.
+        Load the Wishart model fits for the current plane into `Wishart_data`.
+
+        Parameters
+        ----------
+        CIE_version : {'', 'CIE1976', 'CIE1994', 'CIE2000'}, optional
+            Color-difference formula of the simulated data that was fitted.
         """
         if CIE_version not in {'', 'CIE1994', 'CIE1976', 'CIE2000'}:
             raise ValueError('Only CIE versions 1976, 1994, and 2000 are supported.')
-    
-        if self.color_dimension == 2:
-            if self.manual_input:
-                file_name = self._file_selection_popup()
-            else:
-                file_name = ModelFitFilenames.get_filename(
-                    plane_2D=self.plane_2D,
-                    cie_version=CIE_version,
-                    is_3d=False,
-                    manual_input=False
-                )
-        else:
-            file_name = ModelFitFilenames.get_filename(
-                plane_2D=None,
-                cie_version=CIE_version,
-                is_3d=True
-            )
-    
+
+        file_name = ModelFitFilenames.get_filename(
+            plane_2D=self.plane_2D if self.color_dimension == 2 else None,
+            cie_version=CIE_version,
+            is_3d=self.color_dimension == 3,
+        )
+
         file_path = self._find_exact_path(file_name)
         self.file_path_model_fits = file_path
         with open(file_path, 'rb') as f:
-            self.Wishart_data = pickled.load(f)
-    
+            self.Wishart_data = dill.load(f)
+
         print("Loaded Wishart model fits.")
-        
-    def load_transformation_matrix(self, file_date = "02242025"):
+
+    def load_transformation_matrix(self, file_date="02242025"):
         """
         Load color transformation matrices for a specified calibration date.
-    
+
         Parameters
         ----------
         file_date : str, optional
-            String specifying which calibration to use. This determines which
-            set of transformation matrices are loaded via `self._find_exact_path`.
-            Currently supported values:
-    
+            Calibration date (MMDDYYYY) selecting which set of matrices is
+            loaded. Currently supported values:
+
             - "02242025"
-                Calibration used to compute transformation matrices for the 4D
-                color discrimination experiment on the isoluminant plane
+                4D color discrimination experiment on the isoluminant plane
                 (Hong et al., 2025, eLife).
-    
+            - "07292025"
+                Pilot 6D color discrimination experiment spanning the full
+                3D RGB cube.
             - "10062025"
-                Calibration used for the adaptation experiment (gray vs. blue)
-                on the isoluminant plane.
-    
+                Adaptation experiment (gray vs. blue) on the isoluminant plane.
             - "11172025"
-                Same underlying calibration as "10062025", but with transformation
-                matrices corresponding to the L–S–isolating plane.
-                
+                Same underlying calibration as "10062025", but with matrices
+                for the L–S–isolating plane.
             - "02012026"
-                the formal 3D expt
-            
+                Formal 3D experiment.
             - "08272026"
-                the formal 2D interleaved suprathreshold expt
-    
+                Formal 2D interleaved suprathreshold experiment.
+
         Notes
         -----
-        This method:
-        - Instantiates a `ColorTransFilenames` object with the given `file_date`.
-        - Locates and loads the RGB ↔ 2DW transformation matrices:
-            * M_2DWToRGB
-            * M_RGBTo2DW
-        - Locates and loads the DKL ↔ 2DW transformation matrices:
-            * M_2DWToDKL
-            * M_DKLTo2DW
-        - Locates and loads the RGB ↔ LMS transformation matrices.
-        - Optionally loads the cone-increment ↔ DKL transformation matrices.
-
+        Loads four forward/inverse pairs and their file paths:
+        M_2DWToRGB / M_RGBTo2DW, M_2DWToDKL / M_DKLTo2DW,
+        M_LMSToRGB / M_RGBToLMS, and M_ConeIncToDKL / M_DKLToConeInc.
+        A pair that cannot be loaded is set to None with a warning; not every
+        calibration date provides every pair.
         """
-        
-        #save the file paths
-        filenames = ColorTransFilenames(file_date)  # instantiate with default cal_date or provide one if needed
-        print(f'The transformation matrices are based on the calibration done on {file_date}.')
-        
+        filenames = ColorTransFilenames(file_date)
+        print(f'Loading transformation matrices for the {file_date} calibration.')
+
         (self.file_path_M_2DWToRGB, self.file_path_M_RGBTo2DW,
          self.M_2DWToRGB, self.M_RGBTo2DW) = self._load_transformation_pair(
             filenames.M_2DWToRGB_filename, filenames.M_RGBTo2DW_filename,
@@ -345,39 +329,42 @@ class color_thresholds():
                     if matrix.shape != expected_shape or not np.isfinite(matrix).all():
                         raise ValueError(f"{path} must be a finite {expected_shape} matrix.")
         except Exception as error:
-            print(f"Could not load transformation matrices between {description}: {error}")
+            warnings.warn(
+                f"Could not load transformation matrices between {description}: {error}",
+                RuntimeWarning,
+            )
             return None, None, None, None
 
-        print(f"Loaded transformation matrices between {description}.")
         return forward_path, inverse_path, forward_matrix, inverse_matrix
 
     def get_data(self, key, dataset='CIE_data'):
         """
-        Retrieves specific data stored within the class, either from CIE_data or Wishart_data.
+        Return one entry of `CIE_data` or `Wishart_data`.
 
-        Args:
-            key (str): Key for the data to retrieve.
-            dataset (str): Specifies which dataset to query, default is 'CIE_data'.
+        Parameters
+        ----------
+        key : str
+            Key of the entry to retrieve.
+        dataset : {'CIE_data', 'Wishart_data'}, optional
+            Which stored dictionary to query.
 
-        Returns:
-            The data associated with the provided key.
-
-        Raises:
-            ValueError: If the specified dataset does not exist.
-            KeyError: If the key does not exist in the specified dataset.
+        Raises
+        ------
+        ValueError
+            If `dataset` is not one of the two dictionaries.
+        KeyError
+            If `key` is not in the selected dictionary; the message lists the
+            available keys.
         """
-        if dataset == 'Wishart_data':
-            if key not in self.Wishart_data:
-                print(self.Wishart_data.keys())
-                raise KeyError(f"Key '{key}' does not exist in Wishart_data.")
-            return self.Wishart_data[key]
-        elif dataset == 'CIE_data':
-            if key not in self.CIE_data:
-                print(self.CIE_data.keys())
-                raise KeyError(f"Key '{key}' does not exist in CIE_data.")
-            return self.CIE_data[key]
-        else:
+        if dataset not in ('CIE_data', 'Wishart_data'):
             raise ValueError(f"Dataset '{dataset}' does not exist.")
+        data = getattr(self, dataset)
+        if key not in data:
+            raise KeyError(
+                f"Key '{key}' does not exist in {dataset}. "
+                f"Available keys: {list(data.keys())}"
+            )
+        return data[key]
 
     def rgb_to_2DW(self, rgb, tol=1e-2, return_2DW = True):
         """
@@ -500,7 +487,31 @@ class color_thresholds():
         # Always clip (either tiny numerical drift or true out-of-gamut)    
         return np.clip(rgb, 0.0, 1.0)
     
-    def W3D_to_cc(self, W3D, bg_lms, ambient_lms = np.zeros((3,))):
+    #%% 3D point transformations
+    @staticmethod
+    def _as_points(points, name):
+        """Return `points` as an (N, 3) float array and whether it was 1D."""
+        points = np.asarray(points, dtype=float)
+        if points.shape == (3,):
+            return points[None, :], True
+        if points.ndim == 2 and points.shape[1] == 3:
+            return points, False
+        raise ValueError(f"{name} must have shape (3,) or (N, 3).")
+
+    @staticmethod
+    def _match_points(values, points, name):
+        """Broadcast a (3,) vector to `points`, or check an (N, 3) array matches.
+
+        `values=None` is treated as zeros (e.g. no ambient light).
+        """
+        if values is None:
+            return np.zeros_like(points)
+        values = np.asarray(values, dtype=float)
+        if values.shape != (3,) and values.shape != points.shape:
+            raise ValueError(f"{name} must have shape (3,) or match the input points.")
+        return np.broadcast_to(values, points.shape)
+
+    def W3D_to_cc(self, W3D, bg_lms, ambient_lms=None):
         """
         Convert 3D model-space coordinates to cone-contrast coordinates.
 
@@ -508,14 +519,12 @@ class color_thresholds():
         ----------
         W3D : array-like, shape (3,) or (N, 3)
             Input point(s) in 3D W-space.
-        ambient_lms : array-like, shape (3,) or (N, 3)
-            Ambient LMS offset. A single `(3,)` vector is broadcast to all
-            input points; an `(N, 3)` array specifies a different ambient LMS
-            for each input point.
         bg_lms : array-like, shape (3,) or (N, 3)
             Background LMS used to compute cone contrast. A single `(3,)`
             vector is broadcast to all input points; an `(N, 3)` array
             specifies a different background LMS for each input point.
+        ambient_lms : array-like, shape (3,) or (N, 3), optional
+            Ambient LMS offset, broadcast like `bg_lms`. Defaults to zero.
 
         Returns
         -------
@@ -523,44 +532,17 @@ class color_thresholds():
             Cone-contrast coordinates with the same shape as `W3D`:
             `(3,)` for a single point or `(N, 3)` for a batch.
         """
-        W3D = np.asarray(W3D, dtype=float)
-        was_1d = W3D.ndim == 1
-
-        if was_1d:
-            if W3D.shape[0] != 3:
-                raise ValueError("W3D must have shape (3,) or (N, 3).")
-            W3D_eval = W3D[None, :]
-        elif W3D.ndim == 2 and W3D.shape[1] == 3:
-            W3D_eval = W3D
-        else:
-            raise ValueError("W3D must have shape (3,) or (N, 3).")
-
-        ambient_lms = np.asarray(ambient_lms, dtype=float)
-        bg_lms = np.asarray(bg_lms, dtype=float)
-
-        if ambient_lms.shape == (3,):
-            ambient_lms_eval = np.broadcast_to(ambient_lms, W3D_eval.shape)
-        elif ambient_lms.shape == W3D_eval.shape:
-            ambient_lms_eval = ambient_lms
-        else:
-            raise ValueError("ambient_lms must have shape (3,) or match W3D.")
-
-        if bg_lms.shape == (3,):
-            bg_lms_eval = np.broadcast_to(bg_lms, W3D_eval.shape)
-        elif bg_lms.shape == W3D_eval.shape:
-            bg_lms_eval = bg_lms
-        else:
-            raise ValueError("bg_lms must have shape (3,) or match W3D.")
+        W3D, was_1d = self._as_points(W3D, "W3D")
+        bg_lms = self._match_points(bg_lms, W3D, "bg_lms")
 
         # Map model-space coordinates from [-1, 1] to normalized RGB [0, 1],
         # then convert RGB to LMS and finally express the result as cone contrast.
-        rgb = self.W_unit_to_N_unit(W3D_eval)
-        lms = (self.M_RGBToLMS @ rgb.T).T + ambient_lms_eval
-        cc = (lms - bg_lms_eval) / bg_lms_eval
+        lms = self.W3D_to_lms(W3D, ambient_lms)
+        cc = (lms - bg_lms) / bg_lms
 
         return cc[0] if was_1d else cc
-    
-    def cc_to_W3D(self, cc, bg_lms, ambient_lms = np.zeros((3,))):
+
+    def cc_to_W3D(self, cc, bg_lms, ambient_lms=None):
         """
         Convert cone-contrast coordinates to 3D model-space coordinates.
 
@@ -568,14 +550,12 @@ class color_thresholds():
         ----------
         cc : array-like, shape (3,) or (N, 3)
             Input point(s) in cone-contrast space.
-        ambient_lms : array-like, shape (3,) or (N, 3)
-            Ambient LMS offset. A single `(3,)` vector is broadcast to all
-            input points; an `(N, 3)` array specifies a different ambient LMS
-            for each input point.
         bg_lms : array-like, shape (3,) or (N, 3)
             Background LMS used to define cone contrast. A single `(3,)`
             vector is broadcast to all input points; an `(N, 3)` array
             specifies a different background LMS for each input point.
+        ambient_lms : array-like, shape (3,) or (N, 3), optional
+            Ambient LMS offset, broadcast like `bg_lms`. Defaults to zero.
 
         Returns
         -------
@@ -583,41 +563,12 @@ class color_thresholds():
             Model-space coordinates with the same shape as `cc`:
             `(3,)` for a single point or `(N, 3)` for a batch.
         """
-        cc = np.asarray(cc, dtype=float)
-        was_1d = cc.ndim == 1
+        cc, was_1d = self._as_points(cc, "cc")
+        bg_lms = self._match_points(bg_lms, cc, "bg_lms")
 
-        if was_1d:
-            if cc.shape[0] != 3:
-                raise ValueError("cc must have shape (3,) or (N, 3).")
-            cc_eval = cc[None, :]
-        elif cc.ndim == 2 and cc.shape[1] == 3:
-            cc_eval = cc
-        else:
-            raise ValueError("cc must have shape (3,) or (N, 3).")
-
-        ambient_lms = np.asarray(ambient_lms, dtype=float)
-        bg_lms = np.asarray(bg_lms, dtype=float)
-
-        if ambient_lms.shape == (3,):
-            ambient_lms_eval = np.broadcast_to(ambient_lms, cc_eval.shape)
-        elif ambient_lms.shape == cc_eval.shape:
-            ambient_lms_eval = ambient_lms
-        else:
-            raise ValueError("ambient_lms must have shape (3,) or match cc.")
-
-        if bg_lms.shape == (3,):
-            bg_lms_eval = np.broadcast_to(bg_lms, cc_eval.shape)
-        elif bg_lms.shape == cc_eval.shape:
-            bg_lms_eval = bg_lms
-        else:
-            raise ValueError("bg_lms must have shape (3,) or match cc.")
-
-        # Convert cone contrast back to LMS, remove the ambient offset after
-        # mapping through RGB space, and finally map normalized RGB [0, 1]
-        # back to model-space coordinates in [-1, 1].
-        lms = cc_eval * bg_lms_eval + bg_lms_eval
-        rgb = (self.M_LMSToRGB @ (lms - ambient_lms_eval).T).T
-        W3D = self.N_unit_to_W_unit(rgb)
+        # Convert cone contrast back to LMS, then remove the ambient offset and
+        # map back through RGB to model-space coordinates in [-1, 1].
+        W3D = self.lms_to_W3D(cc * bg_lms + bg_lms, ambient_lms)
 
         return W3D[0] if was_1d else W3D
     
@@ -659,7 +610,7 @@ class color_thresholds():
         w_after = self.rgb_to_2DW(rgb_after)
         return w_after[0] if was_1d else w_after
 
-    def W3D_to_DKL(self, s, bg):
+    def W3D_to_dkl(self, s, bg):
         """Convert 3D W-space stimuli to DKL relative to a W-space background.
 
         Parameters
@@ -685,49 +636,220 @@ class color_thresholds():
         changing bg only changes the subtracted origin, not that calibration.
         Values are not clipped. A shared ambient LMS offset cancels out.
         """
-        s = np.asarray(s, dtype=float)
-        bg = np.asarray(bg, dtype=float)
-        if s.shape != (3,) and not (s.ndim == 2 and s.shape[1] == 3):
-            raise ValueError("s must have shape (3,) or (N, 3).")
-        if bg.shape != (3,) and bg.shape != s.shape:
-            raise ValueError("bg must have shape (3,) or match s.")
+        s, was_1d = self._as_points(s, "s")
+        bg = self._match_points(bg, s, "bg")
         if not np.isfinite(s).all() or not np.isfinite(bg).all():
             raise ValueError("s and bg must contain only finite values.")
 
         diff_rgb = self.W_unit_to_N_unit(s) - self.W_unit_to_N_unit(bg)
-        cone_inc = self.M_RGBToLMS @ diff_rgb.T
-        return (self.M_ConeIncToDKL @ cone_inc).T
+        dkl = (self.M_ConeIncToDKL @ self.M_RGBToLMS @ diff_rgb.T).T
+        return dkl[0] if was_1d else dkl
 
-    #%% other useful methods                
+    # Former name, kept so older scripts and notebooks keep working.
+    W3D_to_DKL = W3D_to_dkl
+
+    def dkl_to_W3D(self, dkl, bg):
+        """Convert DKL coordinates back to 3D W-space; inverse of `W3D_to_dkl`.
+
+        Parameters
+        ----------
+        dkl : array-like, shape (3,) or (N, 3)
+            DKL coordinates, with rows indexing points in a batch.
+        bg : array-like, shape (3,) or matching dkl
+            Background in W-space that defines the DKL origin. A single vector
+            is broadcast across all points.
+
+        Returns
+        -------
+        W3D : ndarray
+            W-space coordinates with the same shape as dkl.
+
+        Notes
+        -----
+        Uses the loaded inverse matrices M_DKLToConeInc and M_LMSToRGB.
+        Because W = 2 * RGB - 1, an RGB increment maps to twice that W
+        increment. The same background caveat as `W3D_to_dkl` applies.
+        """
+        dkl, was_1d = self._as_points(dkl, "dkl")
+        bg = self._match_points(bg, dkl, "bg")
+        if not np.isfinite(dkl).all() or not np.isfinite(bg).all():
+            raise ValueError("dkl and bg must contain only finite values.")
+
+        diff_rgb = (self.M_LMSToRGB @ self.M_DKLToConeInc @ dkl.T).T
+        W3D = bg + 2 * diff_rgb
+        return W3D[0] if was_1d else W3D
+
+    def W3D_to_lms(self, W3D, ambient_lms=None):
+        """Convert 3D W-space coordinates to absolute LMS cone excitations.
+
+        Parameters
+        ----------
+        W3D : array-like, shape (3,) or (N, 3)
+            Input point(s) in 3D W-space.
+        ambient_lms : array-like, shape (3,) or (N, 3), optional
+            Ambient LMS offset added after the monitor's contribution.
+            Defaults to zero.
+
+        Returns
+        -------
+        lms : np.ndarray
+            LMS values with the same shape as `W3D`.
+        """
+        W3D, was_1d = self._as_points(W3D, "W3D")
+        ambient_lms = self._match_points(ambient_lms, W3D, "ambient_lms")
+
+        rgb = self.W_unit_to_N_unit(W3D)
+        lms = (self.M_RGBToLMS @ rgb.T).T + ambient_lms
+        return lms[0] if was_1d else lms
+
+    def lms_to_W3D(self, lms, ambient_lms=None):
+        """Convert absolute LMS cone excitations back to 3D W-space.
+
+        Parameters
+        ----------
+        lms : array-like, shape (3,) or (N, 3)
+            Input point(s) in LMS space.
+        ambient_lms : array-like, shape (3,) or (N, 3), optional
+            Ambient LMS offset removed before mapping LMS back to RGB.
+            Defaults to zero.
+
+        Returns
+        -------
+        W3D : np.ndarray
+            W-space coordinates with the same shape as `lms`.
+        """
+        lms, was_1d = self._as_points(lms, "lms")
+        ambient_lms = self._match_points(ambient_lms, lms, "ambient_lms")
+
+        rgb = (self.M_LMSToRGB @ (lms - ambient_lms).T).T
+        W3D = self.N_unit_to_W_unit(rgb)
+        return W3D[0] if was_1d else W3D
+
+    #%% covariance transformations
+    # Every transformation below is affine in the point coordinates, so a
+    # covariance Sigma maps to J @ Sigma @ J.T, where J is the Jacobian of the
+    # matching point transformation. Offsets (background, ambient light) do
+    # not affect covariance. All methods accept a single (3, 3) matrix or a
+    # batch of shape (N, 3, 3).
+    @staticmethod
+    def _check_covM(covM):
+        covM = np.asarray(covM, dtype=float)
+        if covM.shape[-2:] != (3, 3) or covM.ndim not in (2, 3):
+            raise ValueError("covM must have shape (3, 3) or (N, 3, 3).")
+        return covM
+
+    @staticmethod
+    def _propagate_covM(jacobian, covM):
+        return jacobian @ covM @ np.swapaxes(jacobian, -1, -2)
+
+    def W3D_to_rgb_covM(self, covM):
+        """Convert W-space covariance(s) to normalized RGB (Jacobian 0.5 * I)."""
+        return self._check_covM(covM) / 4
+
+    def rgb_to_W3D_covM(self, covM):
+        """Convert normalized-RGB covariance(s) to W-space (Jacobian 2 * I)."""
+        return self._check_covM(covM) * 4
+
+    def W3D_to_lms_covM(self, covM):
+        """Convert W-space covariance(s) to LMS (Jacobian 0.5 * M_RGBToLMS)."""
+        return self._propagate_covM(0.5 * self.M_RGBToLMS, self._check_covM(covM))
+
+    def lms_to_W3D_covM(self, covM):
+        """Convert LMS covariance(s) to W-space (Jacobian 2 * M_LMSToRGB)."""
+        return self._propagate_covM(2 * self.M_LMSToRGB, self._check_covM(covM))
+
+    def _cc_scaling(self, covM, bg_lms):
+        """Validate bg_lms against covM and return it with a trailing axis."""
+        bg_lms = np.asarray(bg_lms, dtype=float)
+        if bg_lms.shape != (3,) and bg_lms.shape != covM.shape[:-1]:
+            raise ValueError("bg_lms must have shape (3,) or (N, 3) matching covM.")
+        return bg_lms[..., :, None]
+
+    def W3D_to_cc_covM(self, covM, bg_lms):
+        """Convert W-space covariance(s) to cone contrast.
+
+        Parameters
+        ----------
+        covM : array-like, shape (3, 3) or (N, 3, 3)
+            Covariance matrices in W-space.
+        bg_lms : array-like, shape (3,) or (N, 3)
+            Background LMS (including any ambient light), as in `W3D_to_cc`.
+
+        Notes
+        -----
+        The Jacobian is diag(1 / bg_lms) @ M_RGBToLMS * 0.5.
+        """
+        covM = self._check_covM(covM)
+        jacobian = 0.5 * self.M_RGBToLMS / self._cc_scaling(covM, bg_lms)
+        return self._propagate_covM(jacobian, covM)
+
+    def cc_to_W3D_covM(self, covM, bg_lms):
+        """Convert cone-contrast covariance(s) back to W-space.
+
+        Parameters
+        ----------
+        covM : array-like, shape (3, 3) or (N, 3, 3)
+            Covariance matrices in cone-contrast space.
+        bg_lms : array-like, shape (3,) or (N, 3)
+            Background LMS (including any ambient light), as in `cc_to_W3D`.
+
+        Notes
+        -----
+        The Jacobian is 2 * M_LMSToRGB @ diag(bg_lms).
+        """
+        covM = self._check_covM(covM)
+        bg_lms = self._cc_scaling(covM, bg_lms)
+        jacobian = 2 * self.M_LMSToRGB * np.swapaxes(bg_lms, -1, -2)
+        return self._propagate_covM(jacobian, covM)
+
+    def W3D_to_dkl_covM(self, covM):
+        """Convert W-space covariance(s) to DKL.
+
+        The Jacobian is 0.5 * M_ConeIncToDKL @ M_RGBToLMS. The same
+        background caveat as `W3D_to_dkl` applies.
+        """
+        jacobian = 0.5 * self.M_ConeIncToDKL @ self.M_RGBToLMS
+        return self._propagate_covM(jacobian, self._check_covM(covM))
+
+    def dkl_to_W3D_covM(self, covM):
+        """Convert DKL covariance(s) to W-space.
+
+        The Jacobian is 2 * M_LMSToRGB @ M_DKLToConeInc.
+        """
+        jacobian = 2 * self.M_LMSToRGB @ self.M_DKLToConeInc
+        return self._propagate_covM(jacobian, self._check_covM(covM))
+
+    #%% other useful methods
     @staticmethod
     def N_unit_to_W_unit(N_unit):
         """
         Convert normalized RGB values from a 0-1 range to a -1 to 1 range.
 
-        Parameters:
+        Parameters
+        ----------
         N_unit : array_like
-            value in the normalized 0-1 range.
+            Values in the normalized 0-1 range, any shape.
 
-        Returns:
+        Returns
+        -------
         W_unit : array_like
-            value in the normalized -1 to 1 range.
+            Values in the -1 to 1 range, same shape as the input.
         """
-        
         return N_unit * 2 - 1
-        
+
     @staticmethod
     def W_unit_to_N_unit(W_unit):
         """
         Convert normalized RGB values from a -1 to 1 range to a 0-1 range.
-        If transformation_matrix is not None, then the shape of W_unit should be 3 x N
 
-        Parameters:
+        Parameters
+        ----------
         W_unit : array_like
-            value in the normalized -1 to 1 range.
+            Values in the -1 to 1 range, any shape.
 
-        Returns:
+        Returns
+        -------
         N_unit : array_like
-            value in the normalized 0-1 range.
+            Values in the normalized 0-1 range, same shape as the input.
         """
-        
         return (W_unit + 1) / 2

@@ -13,8 +13,7 @@ from matplotlib.ticker import MaxNLocator
 from core.model_predictions import wishart_model_pred
 from analysis.ellipses_tools import fit_2d_isothreshold_contour, UnitCircleGenerate
 from analysis.simulations_CIELab import scale_2d_ellipse_contour_from_params
-from colormath.color_diff import delta_e_cie2000, delta_e_cie1994, delta_e_cie1976
-from colormath.color_objects import LabColor
+from colormath import color_diff_matrix
 
 #%%
 class wishart_model_pred_inCIELab(wishart_model_pred):
@@ -186,20 +185,24 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         Args:
             Lab_comp    : (N, 3) comparison points in CIELAB coordinates.
             w_comp      : (N, 3) same points represented in model space coordinates.
-            rgb_comp    : (N, 3) RGB colors (0–1) used to color the scatter points.
+            rgb_comp    : (N, 3) RGB values, clipped to [0, 1] for display only.
             fit_ell_lab : (M, 3) ellipse/contour points in the
                           2D plane defined by the varied dimensions. If provided,
                           this method inserts the fixed Lab coordinate to construct
                           full 3D Lab points for plotting.
         """
         nPts = Lab_comp.shape[0]
+
+        # Search candidates can be outside the monitor gamut. Clip display
+        # colors only; keep the original stimuli for probability evaluation.
+        rgb_display = np.clip(np.asarray(rgb_comp), 0.0, 1.0)
     
         # Figure 1: Scatter the candidate points in CIELAB space
         fig1 = plt.figure(figsize=(7, 7))
         ax1 = fig1.add_subplot(111, projection="3d")
     
         # Color each point by its rendered RGB appearance.
-        ax1.scatter(*Lab_comp.T, c=rgb_comp, s=1 / nPts * 1000)
+        ax1.scatter(*Lab_comp.T, c=rgb_display, s=1 / nPts * 1000)
     
         # Optionally overlay the fitted ellipse/contour in CIELAB space.
         if fit_ell_lab is not None:
@@ -218,7 +221,7 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         # Figure 2: Scatter the same points in model space
         fig2 = plt.figure(figsize=(7, 7))
         ax2 = fig2.add_subplot(111, projection="3d")
-        ax2.scatter(*w_comp.T, c=rgb_comp, s=1 / nPts * 1000)
+        ax2.scatter(*w_comp.T, c=rgb_display, s=1 / nPts * 1000)
         ax2.set_xlabel('Model space dim 1')
         ax2.set_ylabel('Model space dim 2')
         ax2.set_zlabel('Model space dim 3')
@@ -398,7 +401,10 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         #
         # pChoosingX1: probability that the observer selects the comparison as odd
         # for each candidate radius. Shape: (N,)
-        pChoosingX1 = self._compute_pChoosingX1(w_ref_rep, w_comp_rep)
+        if self.params["flag_use_nn_weights"]:
+            pChoosingX1 = self._compute_pChoosingX1_nn(w_ref_rep, w_comp_rep)
+        else:
+            pChoosingX1 = self._compute_pChoosingX1(w_ref_rep, w_comp_rep)
     
         # Pick the candidate whose performance is closest to target criterion.
         min_idx = np.argmin(np.abs(pChoosingX1 - self.target_pC))
@@ -461,7 +467,10 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
     
         # Model choice probability for oddity task: P(choose X1 as odd)
         # Shape returned: (R,)
-        pChoosingX1 = self._compute_pChoosingX1(w_ref_rep, w_comp_rep)
+        if self.params["flag_use_nn_weights"]:
+            pChoosingX1 = self._compute_pChoosingX1_nn(w_ref_rep, w_comp_rep)
+        else:
+            pChoosingX1 = self._compute_pChoosingX1(w_ref_rep, w_comp_rep)
     
         # Reshape to (n_theta, ngrid_bruteforce): rows = directions, cols = radii
         base_shape = (self.params['n_theta'], self.params['ngrid_bruteforce'])
@@ -573,7 +582,7 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         Parameters
         ----------
         Lab_ref : array, shape (G1, G2, 3)
-            Grid of Lab reference stimuli defining the slice.
+            Grid of Lab reference stimuli defining the slice; NaN-padded slots are skipped.
         CLabTool : object
             Helper for Lab ↔ RGB conversions.
         ell_vis_scaler : float, optional
@@ -601,9 +610,13 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
     
         # Loop over all reference locations on the slice grid
         for i in range(self.num_grid_pts1):
-            self.params_ell[i] = [[] for _ in range(self.num_grid_pts2)]
+            self.params_ell[i] = [np.full(5, np.nan) for _ in range(self.num_grid_pts2)]
     
             for j in range(self.num_grid_pts2):
+                # Slices may have different reference counts; skip NaN padding.
+                if not np.isfinite(Lab_ref[i, j]).all():
+                    continue
+
                 print(f"Processing grid point: {np.round(Lab_ref[i, j], 2)}")
     
                 # Compute 2D isothreshold contour and ellipse fit for this reference
@@ -645,7 +658,7 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         Parameters
         ----------
         Lab_ref : array, shape (G1, G2, 3)
-            Grid of Lab reference stimuli defining the slice.
+            Grid of Lab reference stimuli defining the slice; NaN-padded slots are skipped.
         CLabTool : object
             Helper for Lab ↔ RGB conversions (passed through to sampling helpers).
         target_deltaE : float
@@ -659,9 +672,13 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
     
         # Loop over all reference locations on the slice grid
         for i in range(self.num_grid_pts1):
-            self.params_ell_CLab[i] = [[] for _ in range(self.num_grid_pts2)]
+            self.params_ell_CLab[i] = [np.full(5, np.nan) for _ in range(self.num_grid_pts2)]
     
             for j in range(self.num_grid_pts2):
+                # Slices may have different reference counts; skip NaN padding.
+                if not np.isfinite(Lab_ref[i, j]).all():
+                    continue
+
                 # Reference Lab center for this grid point
                 Lab_ref_ij = Lab_ref[i, j]
     
@@ -722,7 +739,7 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
         Parameters
         ----------
         Lab_ref : array, shape (G1, G2, 3)
-            Grid of Lab reference stimuli defining the slice.
+            Grid of Lab reference stimuli defining the slice; NaN-padded slots are skipped.
         bestfit_radii_scaler : float
             Radius scale factor fitted against the WPPM ellipses.
         ell_vis_scaler : float, optional
@@ -735,9 +752,13 @@ class wishart_model_pred_inCIELab(wishart_model_pred):
             )
 
         for i in range(self.num_grid_pts1):
-            self.params_ell_CLab_match[i] = [[] for _ in range(self.num_grid_pts2)]
+            self.params_ell_CLab_match[i] = [np.full(5, np.nan) for _ in range(self.num_grid_pts2)]
 
             for j in range(self.num_grid_pts2):
+                # Slices may have different reference counts; skip NaN padding.
+                if not np.isfinite(Lab_ref[i, j]).all():
+                    continue
+
                 fitEll_scaled_match_ij, fitEll_unscaled_match_ij, params_match_ij = \
                     scale_2d_ellipse_contour_from_params(
                         self.params_ell_CLab[i][j],
@@ -781,30 +802,36 @@ def compute_thres_in_delta_batch(M1, M2, color_alg):
         ΔE values for each stimulus pair.
     """
 
-    # Convert inputs to NumPy arrays
-    M1 = np.asarray(M1)
-    M2 = np.asarray(M2)
+    # LabColor previously converted each coordinate to a Python float.
+    # Preserve that float64 arithmetic and the existing colormath formulas.
+    M1 = np.asarray(M1, dtype=float)
+    M2 = np.asarray(M2, dtype=float)
 
-    # Select the ΔE function based on the chosen algorithm
     if color_alg == 'CIE2000':
-        de_fn = delta_e_cie2000
+        de_fn = color_diff_matrix.delta_e_cie2000
     elif color_alg == 'CIE1994':
-        de_fn = delta_e_cie1994
+        de_fn = color_diff_matrix.delta_e_cie1994
     elif color_alg == 'CIE1976':
-        de_fn = delta_e_cie1976
+        de_fn = color_diff_matrix.delta_e_cie1976
     else:
         raise ValueError('unrecognized color difference algorithm.')
 
-    # Initialize output array
-    dE = np.zeros(M1.shape[0])
+    if not len(M1):
+        return np.zeros(0)
 
-    # Loop over all stimulus pairs
-    for i in range(M1.shape[0]):
-        # Convert each Lab triplet to a LabColor object
-        c1 = LabColor(*M1[i])
-        c2 = LabColor(*M2[i])
+    # The contour search compares one reference against every candidate radius.
+    # The matrix routine evaluates that whole batch in one call, using exactly
+    # the same formulas as the former per-pair colormath wrappers.
+    if np.all(M1 == M1[0]):
+        return de_fn(M1[0], M2)
 
-        # Compute the color difference for this pair
-        dE[i] = de_fn(c1, c2)
-
+    # General row-wise input may contain several references. Group comparisons
+    # by reference, evaluate each batch, and restore the original row order.
+    references, inverse = np.unique(M1, axis=0, return_inverse=True)
+    order = np.argsort(inverse, kind='stable')
+    boundaries = np.concatenate(([0], np.cumsum(np.bincount(inverse))))
+    dE = np.empty(len(M1))
+    for i, reference in enumerate(references):
+        rows = order[boundaries[i]:boundaries[i + 1]]
+        dE[rows] = de_fn(reference, M2[rows])
     return dE

@@ -27,6 +27,9 @@ def patch_asscalar(a):
 setattr(np, "asscalar", patch_asscalar)
 
 required_file_dir = get_path("psychtoolbox_files")
+# CIE 1931 2-degree XYZ color-matching functions (x 683), the same file used by
+# colorspace_demo/demo_thresholds_utils.load_M_RGBToXYZ.
+cmf_file = os.path.join(get_path("dropbox_root_mac"), "ELPS_materials", "util_files", "T_xyz1931.mat")
     
 #%%
 class SimThresCIELab:
@@ -92,9 +95,11 @@ class SimThresCIELab:
         # Shape: (201, 3) = (wavelength samples, R/G/B primaries).
         self.B_MONITOR = loadmat(f'B_monitor_dell_{file_date}.mat')['B_monitor']
 
-        # CIE 1931 XYZ color matching functions on the same wavelength grid.
-        # Shape: (3, 201) = (Xbar/Ybar/Zbar, wavelength samples).
-        self.T_xyz = loadmat('T_xyz_CIE1931.mat')['T_xyz']
+        # CIE 1931 2-degree XYZ color matching functions on the same wavelength
+        # grid. Shape: (3, 201) = (Xbar/Ybar/Zbar, wavelength samples).
+        # This replaces the Psychtoolbox T_xyz_CIE1931.mat used before, which
+        # despite its name does not contain CIE 1931 (see TODO.md).
+        self.T_xyz = loadmat(cmf_file)['T_xyz1931']
         
     def _compute_transformation_matrices(self):
         """ Compute transformation matrice between RGB and XYZ """
@@ -842,6 +847,7 @@ class FixedDim(IntEnum):
 
 @dataclass(frozen=True)
 class SlicePreset:
+    """Legacy saved configuration; new analyses derive slice levels from their grid."""
     fixed_dim: FixedDim                        # which dimension is fixed
     vis_range: Tuple[float, float, int]        # (start, stop, num) for np.linspace
     vectors_centroid: Tuple[float, float]      # 2D vector for your arrows/centroid
@@ -870,52 +876,3 @@ class SlicePreset:
     def varied_dims(self) -> List[int]:
         """Indices of the two varying Lab dimensions for this slice."""
         return [i for i in (0, 1, 2) if i != int(self.fixed_dim)]
-
-# ---- Define your three presets once ----
-PRESETS: Dict[FixedDim, SlicePreset] = {
-    FixedDim.L: SlicePreset(
-        fixed_dim=FixedDim.L,
-        vis_range=(10, 120, 23),
-        vectors_centroid=(0, 0),
-        varied_slc=[(0, 0), (-30, 30), (-15, -15), (15, -15), (5, 30)],
-        fixed_slc_idx=list(range(12, 22, 2)),
-    ),
-    FixedDim.a: SlicePreset(
-        fixed_dim=FixedDim.a,
-        vis_range=(-60, 60, 23),
-        vectors_centroid=(80, 50),
-        varied_slc=[(90, 0), (83, 40), (83, -35), (100, -15), (93, 50)],
-        fixed_slc_idx=list(range(8, 18, 2)),
-    ),
-    FixedDim.b: SlicePreset(
-        fixed_dim=FixedDim.b,
-        vis_range=(-70, 75, 23),
-        vectors_centroid=(80, 0),
-        varied_slc=[(95, 0), (85, 20), (82, -10), (100, -25), (75, 50)],
-        fixed_slc_idx=list(range(8, 18, 2)),
-    ),
-}
-
-
-def pretty_print_preset(preset):
-    dim_names = {0: "L*", 1: "a*", 2: "b*"}
-    fixed_name = dim_names[int(preset.fixed_dim)]
-    varied = [d for d in (0,1,2) if d != int(preset.fixed_dim)]
-    varied_names = [dim_names[d] for d in varied]
-
-    vals = np.linspace(*preset.vis_range)                 # full fixed-dim sweep
-    idx  = np.asarray(preset.fixed_slc_idx, dtype=int)    # chosen indices
-    sel_vals = vals[idx]                                  # chosen fixed-dim values
-
-    print("=== Stimulus Configuration ===")
-    print(f"Fixed dimension       : {fixed_name} (code {int(preset.fixed_dim)})")
-    print(f"Varied dimensions     : {varied_names} (codes {varied})")
-    print(f"Fixed range (linspace): start={preset.vis_range[0]}, "
-          f"stop={preset.vis_range[1]}, num={preset.vis_range[2]}")
-    print(f"Selected fixed idx    : {idx.tolist()}")
-    print(f"Selected fixed vals   : {np.round(sel_vals, 1).tolist()}")
-    print(f"Vectors centroid      : {tuple(preset.vectors_centroids)}")
-    print(f"Varied slice points   : {np.asarray(preset.val_varied_slc).tolist()}")
-
-
-    

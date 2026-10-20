@@ -53,6 +53,7 @@ from tqdm import trange
 import numpy as np
 from copy import deepcopy
 import os
+import re
 from analysis.utils_load import select_file_and_get_path
 from analysis.model_performance import ModelPerformance
 
@@ -241,10 +242,11 @@ for r in trange(nDatasets):
     del vars_dict_btst
 
 # Save one numeric archive for this participant and selected metric.
+subN = re.search(r"(?:^|_)sub(\d+)(?=_|\.|$)", file_name).group(1)
 output_npz_path = os.path.join(
     input_fileDir_fits,
     'output_data_no_classobjects',
-    f"{metric}_all_bootstraps.npz",
+    f"{metric}_all_bootstraps_sub{subN}.npz",
 )
 np.savez(output_npz_path, grid_fine=np.asarray(grid_fine),
          **{metric_key: metric_fine_grid_all})

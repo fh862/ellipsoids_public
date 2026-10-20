@@ -37,6 +37,8 @@ The selected original-fit pickle is updated with ``grid_fine`` and
 the matching fine grid, ``Sigmas_noise_grid_btst``, and the selected metric's
 fine-grid values. Compatible cached quantities are reused, so running the
 script once for NBS and again for AIRM does not recompute covariance matrices.
+A metric-specific NPZ beside the bootstrap pickles stores the shared grid and
+all bootstrap metric arrays, with the bootstrap index along the first axis.
 
 Downstream scripts such as ``visualize_CI_Wishart_grid_2d.py`` sum the selected
 fine-grid values to obtain one score per bootstrap dataset. NBS must be ranked
@@ -131,6 +133,9 @@ else:
 #   selected file:
 #   'Fitted_ColorDiscrimination_6dExpt_RGBcube_sub1_decayRate0.4_nBasisDeg5_btst_AEPsych[0].pkl'
 input_fileDir_fits_btst, file_name_btst = select_file_and_get_path()
+
+# Collect cached and newly computed values in bootstrap-index order.
+metric_fine_grid_all = np.empty((nDatasets,) + grid_fine.shape[:-1], dtype=float)
 
 for r in trange(nDatasets):
     # Replace the bootstrap index in the filename template.
@@ -231,5 +236,16 @@ for r in trange(nDatasets):
 
         with open(full_path_btst_r, 'wb') as f:
             pickled.dump(vars_dict_btst, f)
-    
-        del vars_dict_btst
+
+    metric_fine_grid_all[r] = np.asarray(vars_dict_btst[metric_key])
+    del vars_dict_btst
+
+# Save one numeric archive for this participant and selected metric.
+output_npz_path = os.path.join(
+    input_fileDir_fits,
+    'output_data_no_classobjects',
+    f"{metric}_all_bootstraps.npz",
+)
+np.savez(output_npz_path, grid_fine=np.asarray(grid_fine),
+         **{metric_key: metric_fine_grid_all})
+print(f"Saved {metric} bootstrap values: {output_npz_path}")

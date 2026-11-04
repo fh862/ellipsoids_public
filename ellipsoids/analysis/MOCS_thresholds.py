@@ -39,15 +39,6 @@ from scipy.stats.qmc import Sobol
 from tqdm import trange
 import copy
 import os
-# Optional import: geodesics (not needed on all machines)
-try:
-    from core import geodesics
-    HAS_GEODESICS = True
-except Exception as e:
-    geodesics = None
-    HAS_GEODESICS = False
-    print(f"[WARN] Optional module `core.geodesics` not available. "
-          f"Geodesic-related functionality will be disabled. ({e})")
 
 #%%
 class fit_PMF_MOCS_trials():
@@ -666,6 +657,10 @@ class fit_PMF_MOCS_trials():
         np.ndarray of shape (N,)
             Geodesic distances for each reference–comparison pair.
         """
+        # Imported here so MOCS works without the geodesic dependencies unless
+        # dist_metric="Geodesic" is used.
+        from core import geodesics
+
         nLevels = xref.shape[0]
         geodesic_dist = np.full((nLevels,), np.nan)
         # If dicts don’t exist yet, initialize them
@@ -690,7 +685,9 @@ class fit_PMF_MOCS_trials():
                 )
                 v0 = metrics["best_solution"]
                 xt_n, ts_n = geodesics.shooting_geodesic(xref[n], v0, self.precision_field)
-                cost_n = geodesics.estimate_path_cost(xt_n, ts_n, self.precision_field)
+                # Geodesic length: constant speed, so L = sqrt(v0^T P(x0) v0)
+                # over t in [0, 1].
+                cost_n = jnp.sqrt(v0 @ self.precision_field(xref[n]) @ v0)
         
                 # Save distance
                 geodesic_dist[n] = cost_n

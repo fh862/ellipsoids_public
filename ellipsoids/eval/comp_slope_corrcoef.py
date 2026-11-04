@@ -63,8 +63,8 @@ slope_sim, corr_coef_sim, slope_CI_sim, corr_coef_CI_sim = (
 input_fileDir_fits_others, file_name_others = select_file_and_get_path()
 
 # Define subject information
-subject_list = [1,2,4,6,7,8,10,11]         # Only used if loading other subjects
-subject_init = ['CH','ME', 'SG','DK','BH','FM','HG', 'FW']
+subject_list = [1,2,4,7,8,10]   #[1,2,4,6,7,8,10,11]         # Only used if loading other subjects 
+subject_init = ['CH','ME', 'SG','BH','FM','HG'] #['CH','ME', 'SG','DK','BH','FM','HG', 'FW']
 nDatasets = len(subject_list)
 
 # Initialize
@@ -102,6 +102,15 @@ corr_coef_all = np.append(corr_coef_sim, corr_coef_data)
 slope_CI_all = np.vstack((slope_CI_sim, slope_CI_data))
 corr_coef_CI_all = np.vstack((corr_coef_CI_sim, corr_coef_CI_data))
 
+print(
+    f"Mean slope: {np.nanmean(slope_all):.3f}; "
+    f"range: {np.nanmin(slope_all):.3f}–{np.nanmax(slope_all):.3f}"
+)
+print(
+    f"Mean correlation coefficient: {np.nanmean(corr_coef_all):.3f}; "
+    f"range: {np.nanmin(corr_coef_all):.3f}–{np.nanmax(corr_coef_all):.3f}"
+)
+
 # Compute error bars (upper and lower deviations)
 slope_CI_err = np.vstack((slope_all - slope_CI_all[:,0],
                               slope_CI_all[:,1] - slope_all))
@@ -114,7 +123,7 @@ x = np.concatenate(([0], np.arange(1.5, nDatasets+1.5, 1)))
 # Plot
 plt.rcParams['font.sans-serif'] = 'Arial'
 plt.rcParams['font.size'] = 16
-fig, axs = plt.subplots(2, 1, figsize=(6, 4), dpi=1024, sharex=True) #(5, 6) (7, 5)
+fig, axs = plt.subplots(2, 1, figsize=(6.5, 4), dpi=1024, sharex=True) #(5, 6) (7, 5)
 # Slope plot
 # Make a custom color array (each row is an RGB color)
 colors = np.vstack((
@@ -135,13 +144,14 @@ axs[1].set_ylim([0, 1]); axs[1].set_yticks(np.linspace(0, 1, 3))
 
 # X-axis
 axs[1].set_xticks(x)
-axs[1].set_xticklabels(['Simulated\nsubject'] + [f'\n{s}' for s in subject_init])
+axs[1].set_xticklabels(['Simulated\nobserver'] + [f'\n{s}' for s in subject_init])
 plt.setp(axs[1].get_xticklabels(), rotation=0)
 
 plt.tight_layout()
 plt.show()
 # Save the figure as a PDF
-output_figDir = os.path.join(base_dir, 'Experiment_FigFiles', 'pilot2', 'groupData', 'fits')
+output_figDir = os.path.join(os.path.dirname(os.path.dirname(input_fileDir_fits_others)), 
+                             'groupData', 'fits').replace('DataFiles', 'FigFiles')
 os.makedirs(output_figDir, exist_ok=True)
 fig.savefig(os.path.join(output_figDir, 'Slope_corrcoef_groupData.pdf'),
              format='pdf', bbox_inches='tight')

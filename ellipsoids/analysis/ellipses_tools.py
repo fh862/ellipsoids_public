@@ -503,8 +503,9 @@ def fit_2d_isothreshold_contour(ref, comp, nTheta = 200, ellipse_scaler = 1.0,
     ref : array-like, shape (2,)
         Reference stimulus location.
     
-    comp : array-like, shape (2, M) or (M, 2)
-        Contour points.
+    comp : array-like, shape (2, M)
+        Contour points, one column per point. An (M, 2) array passes the
+        shape check but fails in the scaling step, so pass (2, M).
     
     nTheta : int, optional
         Number of samples used to render the fitted ellipse curve.
@@ -527,6 +528,8 @@ def fit_2d_isothreshold_contour(ref, comp, nTheta = 200, ellipse_scaler = 1.0,
     fitEllipse_unscaled : ndarray, shape (2, nTheta)
     ellipse_params : list
         [xCenter, yCenter, majorAxis, minorAxis, theta_deg]
+    comp_scaled : ndarray, shape (2, M)
+        Contour points scaled about `ref` by `ellipse_scaler`.
     """
     ref = np.asarray(ref, dtype=float)
     comp = np.asarray(comp, dtype=float)

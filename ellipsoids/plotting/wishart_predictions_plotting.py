@@ -151,6 +151,7 @@ class Plot3DPredHTMLSettings:
     ell_alpha: float = 0.5
     ell_scaler: float = 1
     ell_hover_info: str = 'skip' #3D ellipsoids
+    ell_batch_surfaces: bool = False
     # sliced ellipses
     sEll_hover_info: str = 'skip' #sliced ellipses
     sEll_line_color: Union[np.ndarray, List[float]] = field(default_factory=lambda: np.array([0,0,0]))
@@ -1549,6 +1550,74 @@ if (plotDiv) {{
             hoverinfo=self.st.ell_hover_info,
         ))
         return fig
+
+    def add_batched_ellipsoid_surfaces(
+        self,
+        fig,
+        surfaces,
+        colors,
+        customdata=None,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+        hovertemplate=None,
+    ):
+        """Add disconnected ellipsoid meshes as one Plotly trace."""
+        if not surfaces:
+            return fig
+
+        nu, nv = np.shape(surfaces[0][0])
+        num_surfaces = len(surfaces)
+        vertices_per_surface = nu * nv
+        vertices = np.vstack([
+            np.column_stack(tuple(component.ravel() for component in surface))
+            for surface in surfaces
+        ])
+        rows, cols = np.meshgrid(
+            np.arange(nu - 1), np.arange(nv - 1), indexing="ij"
+        )
+        lower_left = (rows * nv + cols).ravel()
+        local_triangles = np.vstack((
+            np.column_stack((lower_left, lower_left + nv, lower_left + nv + 1)),
+            np.column_stack((lower_left, lower_left + nv + 1, lower_left + 1)),
+        ))
+        triangles = np.vstack([
+            local_triangles + index * vertices_per_surface
+            for index in range(num_surfaces)
+        ])
+
+        stacked_customdata = None
+        if customdata is not None:
+            customdata = np.asarray(customdata)
+            if len(customdata) != num_surfaces:
+                raise ValueError("customdata must have one row per ellipsoid")
+            stacked_customdata = np.repeat(
+                customdata.reshape(num_surfaces, -1),
+                vertices_per_surface,
+                axis=0,
+            )
+
+        fig.add_trace(go.Mesh3d(
+            x=vertices[:, 0],
+            y=vertices[:, 1],
+            z=vertices[:, 2],
+            i=triangles[:, 0],
+            j=triangles[:, 1],
+            k=triangles[:, 2],
+            vertexcolor=np.repeat(
+                np.asarray(colors), vertices_per_surface, axis=0
+            ),
+            customdata=stacked_customdata,
+            opacity=self.st.ell_alpha,
+            lighting=self.lighting,
+            lightposition=self.light_position,
+            hoverinfo=self.st.ell_hover_info,
+            hovertemplate=hovertemplate,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
+        ))
+        return fig
     
     def plot_ellipsoids_mesh(self, fig, model_pred, center_rgb = None):
         """
@@ -1598,27 +1667,94 @@ if (plotDiv) {{
             self.add_ellipsoid_surface(fig, X, Y, Z, color_str)
         return fig
     
-    def plot_ellipsoids_mesh_cov(self, fig, grid, cov_grid):
-        base_shape = grid.shape[:3]
+    def plot_ellipsoids_mesh_cov(
+        self,
+        fig,
+        grid,
+        cov_grid,
+        center_rgb=None,
+        batch=None,
+        customdata=None,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+        hovertemplate=None,
+    ):
+        """Add covariance ellipsoids, optionally batched into one surface trace."""
+        grid = np.asarray(grid)
+        cov_grid = np.asarray(cov_grid)
+        base_shape = grid.shape[:-1]
+        if grid.shape[-1] != 3 or cov_grid.shape != base_shape + (3, 3):
+            raise ValueError(
+                "grid and cov_grid must have shapes (..., 3) and (..., 3, 3)"
+            )
+
+        batch = self.st.ell_batch_surfaces if batch is None else batch
+        if center_rgb is not None:
+            center_rgb = np.asarray(center_rgb)
+            if center_rgb.shape != grid.shape:
+                raise ValueError("center_rgb must have the same shape as grid")
+        if customdata is not None:
+            customdata = np.asarray(customdata)
+            if customdata.shape[:len(base_shape)] != base_shape:
+                raise ValueError("customdata must begin with the grid dimensions")
+
+        surfaces = []
+        colors = []
+        surface_customdata = []
+        first_trace_index = len(fig.data)
         for ijk in np.ndindex(*base_shape):
             center = grid[ijk]
-            cov_ijk = cov_grid[ijk]
-            eigenvalues, evecs, radii, *_ = covMat_to_ellParamsQ(cov_ijk)
-            
-            # Map center (W-unit) -> display color (e.g., normalized RGB) -> CSS rgb()
-            center_rgb01 = color_thresholds.W_unit_to_N_unit(center)  # ensure returns in [0,1]
-            color_str    = self.to_rgb_str(center_rgb01)
+            _, evecs, radii, *_ = covMat_to_ellParamsQ(cov_grid[ijk])
+            center_for_color = (
+                center_rgb[ijk]
+                if center_rgb is not None
+                else color_thresholds.W_unit_to_N_unit(center)
+            )
+            color_str = self.to_rgb_str(center_for_color)
 
             X, Y, Z = EllipsoidSurfaceMesh(
-                radii = self.st.ell_scaler * radii, 
-                center = center, 
-                eigenVectors = evecs,
-                nu = self.st.ell_mesh_nu, 
-                nv=self.st.ell_mesh_nv
+                radii=self.st.ell_scaler * radii,
+                center=center,
+                eigenVectors=evecs,
+                nu=self.st.ell_mesh_nu,
+                nv=self.st.ell_mesh_nv,
+            )
+
+            if batch:
+                surfaces.append((X, Y, Z))
+                colors.append(
+                    np.clip(255 * center_for_color, 0, 255).astype(np.uint8)
                 )
-            
-            # use the internal helper
-            self.add_ellipsoid_surface(fig, X, Y, Z, color_str)
+                if customdata is not None:
+                    surface_customdata.append(customdata[ijk])
+            else:
+                self.add_ellipsoid_surface(fig, X, Y, Z, color_str)
+                trace = fig.data[-1]
+                trace.update(
+                    name=name,
+                    legendgroup=legendgroup,
+                    showlegend=showlegend and len(fig.data) == first_trace_index + 1,
+                    hovertemplate=hovertemplate,
+                )
+                if customdata is not None:
+                    row = np.asarray(customdata[ijk]).ravel()
+                    trace.customdata = np.broadcast_to(
+                        row,
+                        X.shape + (row.size,),
+                    )
+
+        if batch:
+            self.add_batched_ellipsoid_surfaces(
+                fig,
+                surfaces,
+                colors,
+                customdata=surface_customdata if customdata is not None else None,
+                name=name,
+                legendgroup=legendgroup,
+                showlegend=showlegend,
+                hovertemplate=hovertemplate,
+            )
         return fig
         
     def apply_3d_layout(self, fig):

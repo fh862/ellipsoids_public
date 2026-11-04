@@ -25,6 +25,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pre-commit", "pytest"]
+# Geodesic solvers: initial value problem from euclidization (pinned commit,
+# brings diffrax), shooting for the boundary value problem via CMA-ES (evosax).
+geodesics = [
+    "euclidization @ git+https://github.com/ahwillia/euclideanization.git@30834683c04cb137da23455b477e0f767a1fe7d2",
+    "evosax",
+]
 
 # ---------------------------------------------------------------------------
 # Packaging — expose every functional subdirectory as an importable package

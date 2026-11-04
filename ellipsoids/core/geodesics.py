@@ -62,27 +62,80 @@ def exponential_map(x0, v0, odeterm, odesolver, dt0=0.001):
         saveat=SaveAt(t0=True, t1=True, steps=True)
     ).ys[0]
 
-def estimate_geodesic(P, x0, x1, key, dt0=0.1, num_restarts=10, tol=1e-3):
+def estimate_geodesic(P, x0, x1, key, dt0=0.1, num_restarts=10, tol=1e-3,
+                      init_noise=0.5):
+    """
+    Shooting method with Levenberg-Marquardt: find the initial velocity v0
+    whose geodesic from x0 ends at x1, keeping the shortest geodesic found
+    over several restarts.
+
+    Each restart minimizes the end-point residual x1 - x(1) over v0 by least
+    squares, differentiating through the ODE solve. Restart 0 starts at the
+    straight-line velocity x1 - x0; the others add Gaussian noise with
+    standard deviation init_noise * |x1 - x0|, so they can converge to
+    different geodesics. Among the restarts whose residual norm is below
+    `tol`, the one with the shortest geodesic length sqrt(v0^T P(x0) v0) wins.
+
+    Parameters
+    ----------
+    P : Function R^d -> R^(d,d) returning the precision matrix (metric) at x.
+    x0 : array, shape (d,)
+        Start point.
+    x1 : array, shape (d,)
+        End point.
+    key : jax.random.PRNGKey
+        Random key for the restart perturbations.
+    dt0 : float
+        Fixed Dopri5 step size; the solve takes 1 / dt0 steps over [0, 1].
+    num_restarts : int
+        Number of starting guesses.
+    tol : float
+        A restart counts as converged if |x1 - x(1)| < tol.
+    init_noise : float
+        Standard deviation of the restart perturbations, relative to |x1 - x0|.
+
+    Returns
+    -------
+    best_v0 : array, shape (d,)
+        Initial velocity of the shortest converged geodesic.
+    geodesic_simulator : function (dt0, saveat) -> positions
+        Integrates the geodesic from (x0, best_v0) and returns the positions
+        at the times in `saveat`.
+    """
     term = ODETerm(geodesic_vector_field(P))
     ode_solver = Dopri5()
     optimizer = LevenbergMarquardt(tol * 0.1, tol * 0.1)
-    resids = jax.jit(
-        lambda v0, args: (x1 - exponential_map(x0, v0, term, ode_solver, dt0=dt0)).ravel()
-    )
-    z = (x1 - x0) / jnp.linalg.norm(x1 - x0)
-    min_speed = jnp.inf
+
+    # End point x(1) of the geodesic from (x0, v0). Only t = 1 is saved:
+    # `exponential_map` (SaveAt(steps=True)) also returns x0, every step and
+    # inf padding up to diffrax's max_steps, which would all enter the residual.
+    def endpoint(v0):
+        return diffrax.diffeqsolve(
+            term, ode_solver, t0=0, t1=1, dt0=dt0, y0=(x0, v0),
+            saveat=SaveAt(t1=True)
+        ).ys[0][-1]
+
+    resids = jax.jit(lambda v0, args: x1 - endpoint(v0))
+
+    min_length = jnp.inf
     best_v0 = None
-    for k in tqdm(jax.random.split(key, num_restarts)):
+    for i, k in enumerate(tqdm(jax.random.split(key, num_restarts))):
+        # Restart 0 is the straight line; the others are perturbed around it.
+        noise = 0.0 if i == 0 else init_noise
         v0_init = (x1 - x0) + (
-            0.0 * jnp.linalg.norm(x1 - x0) * jax.random.normal(k, shape=x0.shape)
+            noise * jnp.linalg.norm(x1 - x0) * jax.random.normal(k, shape=x0.shape)
         )
+        # throw=False: a restart that does not converge is skipped below
+        # instead of raising an error and ending the whole search.
         result = optimistix.least_squares(
-            resids, optimizer, v0_init, options=dict(jac="bwd")
+            resids, optimizer, v0_init, options=dict(jac="bwd"), throw=False
         )
-        converged = jnp.linalg.norm(result.state.f_info.residual) < tol
-        speed = jnp.linalg.norm(result.value)
-        if converged and (speed < min_speed):
-            min_speed = speed
+        converged = jnp.linalg.norm(resids(result.value, None)) < tol
+        # Compare restarts by geodesic length ||v0||_P(x0), not the Euclidean
+        # norm of v0, which ranks them differently when P is anisotropic.
+        length = jnp.sqrt(result.value @ P(x0) @ result.value)
+        if converged and (length < min_length):
+            min_length = length
             best_v0 = result.value
     if best_v0 is None:
         raise RuntimeError("Shooting method did not converge.")
@@ -145,31 +198,11 @@ def estimate_v0(
         if metrics["best_fitness"] < tolerance:
             break
 
-    return state, metrics    
-            
-def estimate_path_cost(xt, ts, precision_field):
-    """
-    Given a geodesic path `xt` sampled over a grid of time points
-    specified in `ts`, compute the path cost (i.e. geodesic distance)
-    """
-    dts = jnp.diff(ts)
-    v = jnp.diff(xt, axis=0) / dts[:, None]
-    x = 0.5 * (xt[1:] + xt[:-1])
-    costs = jnp.einsum("tij,ti,tj->t", jax.vmap(precision_field)(x), v, v)
-    return jnp.sqrt(jnp.sum(costs * dts))
+    return state, metrics
 
-def segment_costs(xt, ts, precision_field):
-    xt = jnp.asarray(xt)
-    ts = jnp.asarray(ts)
-
-    dts = jnp.diff(ts)                                 # (T-1,)
-    v = jnp.diff(xt, axis=0) / dts[:, None]            # (T-1, D)
-    x_mid = 0.5 * (xt[1:] + xt[:-1])                   # (T-1, D)
-    P_mid = jax.vmap(precision_field)(x_mid)           # (T-1, D, D)
-
-    quad = jnp.einsum('tij,ti,tj->t', P_mid, v, v)     # v^T P v per segment
-    seg_lengths = jnp.sqrt(quad) * dts                 # length contribution per segment
-    return jnp.array(seg_lengths)
+# Geodesic length: a geodesic has constant speed, so the geodesic from x0 with
+# initial velocity v0 has length L = sqrt(v0^T P(x0) v0) over t in [0, 1], and
+# length t * L up to time t. Callers compute this directly from v0.
 
 #%%
 # ---- builders that bind P ----

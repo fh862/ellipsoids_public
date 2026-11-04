@@ -645,9 +645,6 @@ class color_thresholds():
         dkl = (self.M_ConeIncToDKL @ self.M_RGBToLMS @ diff_rgb.T).T
         return dkl[0] if was_1d else dkl
 
-    # Former name, kept so older scripts and notebooks keep working.
-    W3D_to_DKL = W3D_to_dkl
-
     def dkl_to_W3D(self, dkl, bg):
         """Convert DKL coordinates back to 3D W-space; inverse of `W3D_to_dkl`.
 
@@ -724,6 +721,81 @@ class color_thresholds():
         rgb = (self.M_LMSToRGB @ (lms - ambient_lms).T).T
         W3D = self.N_unit_to_W_unit(rgb)
         return W3D[0] if was_1d else W3D
+    
+    @staticmethod
+    def _macleod_boynton_factors(T_cones, T_lum):
+        """Return the LMS -> LMS' scale factors (3,) for MacLeod–Boynton lsY.
+
+        Validates cones (3, K) and luminance (K,). Used for `lms_to_lsY` and
+        `lsY_to_lms`.
+        """
+        T_cones = np.asarray(T_cones, dtype=float)
+        T_lum = np.asarray(T_lum, dtype=float)
+
+        if T_cones.ndim != 2 or T_cones.shape[0] != 3 or T_cones.shape[1] == 0:
+            raise ValueError("T_cones must have shape (3, K), with K > 0.")
+        if T_lum.shape != (T_cones.shape[1],):
+            raise ValueError("T_lum must have shape (K,), matching T_cones' wavelength count.")
+        for name, values in (("T_cones", T_cones), ("T_lum", T_lum)):
+            if not np.isfinite(values).all():
+                raise ValueError(f"{name} must contain only finite values.")
+
+        #What weighted combination of the L- and M-cone sensitivity curves best
+        #reproduces the luminance sensitivity curve?
+        factorsLM = np.linalg.lstsq(
+            T_cones[:2].T,
+            T_lum,
+            rcond=None,
+        )[0]
+
+        # Spectral luminance predicted from weighted L and M fundamentals
+        T_lum_fit = factorsLM @ T_cones[:2]
+
+        # CIE MacLeod–Boynton S-axis normalization
+        # Match MATLAB max: ignore 0/0 samples outside the cone support.
+        with np.errstate(invalid="ignore"):
+            s_spectral = T_cones[-1] / T_lum_fit
+        factorS = 1 / np.nanmax(s_spectral)
+
+        #LMS prime
+        return np.array([*factorsLM, factorS])
+
+    @staticmethod
+    def lms_to_lsY(points_lms, T_cones, T_lum):
+        """Convert LMS (3,) or (N, 3) using cones (3, K) and luminance (K,).
+
+        Return lsY coordinates with the same shape as points_lms.
+        """
+        points_lms, was_1d = color_thresholds._as_points(points_lms, "points_lms")
+        if not np.isfinite(points_lms).all():
+            raise ValueError("points_lms must contain only finite values.")
+        factorsLMS = color_thresholds._macleod_boynton_factors(T_cones, T_lum)
+
+        lms_prime = points_lms * factorsLMS
+
+        Y = lms_prime[..., 0] + lms_prime[..., 1]
+        l = lms_prime[..., 0] / Y
+        s = lms_prime[..., 2] / Y
+
+        lsY = np.stack((l, s, Y), axis=-1)
+        return lsY[0] if was_1d else lsY
+
+    @staticmethod
+    def lsY_to_lms(points_lsY, T_cones, T_lum):
+        """Convert lsY (3,) or (N, 3) back to LMS; inverse of `lms_to_lsY`.
+
+        Return LMS coordinates with the same shape as points_lsY.
+        """
+        points_lsY, was_1d = color_thresholds._as_points(points_lsY, "points_lsY")
+        if not np.isfinite(points_lsY).all():
+            raise ValueError("points_lsY must contain only finite values.")
+        factorsLMS = color_thresholds._macleod_boynton_factors(T_cones, T_lum)
+
+        l, s, Y = points_lsY[..., 0], points_lsY[..., 1], points_lsY[..., 2]
+        lms_prime = np.stack((l * Y, (1 - l) * Y, s * Y), axis=-1)
+
+        lms = lms_prime / factorsLMS
+        return lms[0] if was_1d else lms
 
     #%% covariance transformations
     # Every transformation below is affine in the point coordinates, so a

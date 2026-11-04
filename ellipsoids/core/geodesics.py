@@ -5,7 +5,13 @@ initial value solver in `euclidization.geodesics`.
 `euclidization.geodesics` integrates the geodesic equation forward from a
 start point x0 and an initial velocity v0 (`exp_map`, `geodesic_path`,
 `geodesic_length`). This module adds the shooting method on top of it: given
-x0 and an end point x1, search for a v0 whose geodesic ends at x1.
+x0 and an end point x1, search for a v0 whose geodesic ends at x1. Both
+solvers take a batch of pairs and differ in the optimizer:
+
+    shoot_geodesics_cma : CMA-ES (derivative-free); returns the search state
+                          and metrics.
+    shoot_geodesics_lm  : Levenberg-Marquardt (gradient-based) with restarts;
+                          returns the shortest converged v0 per pair.
 
 Every function takes the inverse metric g_inv(x) -> (d, d), i.e. the Wishart
 covariance Sigma(x), the same convention as `euclidization.geodesics`. For a
@@ -25,15 +31,16 @@ from evosax.algorithms import CMA_ES
 from euclidization import geodesics as euclid_geodesics
 from optimistix import LevenbergMarquardt
 
-#%% 1. Shooting method: find the initial velocity
-def shoot_geodesics(
+#%% 1. Shooting method with CMA-ES (derivative-free)
+def shoot_geodesics_cma(
         g_inv, x0s, x1s, keys, *,
         num_generations=20, popsize=20, tolerance=1e-3,
         v0_inits=None, n_steps=512,
     ):
     """
     For each pair of points, find an initial velocity v0 whose geodesic from
-    x0 ends at x1 (shooting method).
+    x0 ends at x1 (shooting method with CMA-ES). See `shoot_geodesics_lm`
+    for the gradient-based counterpart.
 
     For each pair, an evolutionary strategy (CMA-ES) searches over v0. Each
     candidate is shot forward with `euclid_geodesics.exp_map`, and its fitness
@@ -147,11 +154,13 @@ def shoot_geodesics(
 
 
 #%% 2. Shooting method with Levenberg-Marquardt (gradient-based)
-def estimate_geodesic(g_inv, x0, x1, key, *, num_restarts=10, tol=1e-3,
-                      init_noise=0.5, n_steps=512):
+def shoot_geodesics_lm(g_inv, x0s, x1s, keys, *, num_restarts=10, tol=1e-3,
+                       init_noise=0.5, n_steps=512):
     """
-    Find the initial velocity v0 whose geodesic from x0 ends at x1, keeping
-    the shortest geodesic found over several restarts.
+    For each pair of points, find the initial velocity v0 whose geodesic from
+    x0 ends at x1, keeping the shortest geodesic found over several restarts
+    (shooting method with Levenberg-Marquardt). Gradient-based counterpart of
+    `shoot_geodesics_cma`; unlike it, this returns only the velocities.
 
     Each restart minimizes the end-point residual x1 - exp_map(x0, v0) over v0
     with Levenberg-Marquardt; the Jacobian comes from reverse-mode autodiff
@@ -162,55 +171,78 @@ def estimate_geodesic(g_inv, x0, x1, key, *, num_restarts=10, tol=1e-3,
     `tol`, the one with the shortest geodesic length
     (`euclid_geodesics.geodesic_length`) wins.
 
-    Gradient-based version of `core/geodesics_archived.estimate_geodesic`, which takes
-    the precision matrix P(x) instead of g_inv(x). One pair at a time.
+    All pairs and restarts run in one compiled, vmapped call, so the solver is
+    compiled once per call rather than once per pair. Run time grows with
+    B * num_restarts: each restart costs about 7 LM steps, and each step costs
+    about 7.5 shots of `exp_map` (one shot plus a d x d Jacobian). On the sub10
+    suprathreshold pairs, all restarts converged to the same geodesic (lengths
+    within 4e-6), so fewer restarts gave the same answer much faster.
+    For a single pair, pass arrays with a leading axis of size 1
+    (x0[None], x1[None], key[None]).
+
+    Gradient-based version of `core/geodesics_archived.estimate_geodesic`,
+    which takes the precision matrix P(x) instead of g_inv(x).
 
     Parameters
     ----------
     g_inv : Function R^d -> R^(d,d) returning the inverse metric g^{ij}(x),
         i.e. the covariance Sigma(x).
-    x0 : array, shape (d,)
-        Start point.
-    x1 : array, shape (d,)
-        End point.
-    key : jax.random.PRNGKey
-        Random key for the restart perturbations.
+    x0s : array, shape (B, d)
+        Start points.
+    x1s : array, shape (B, d)
+        End points.
+    keys : array, shape (B, 2)
+        One random key per pair for the restart perturbations, e.g.
+        jax.random.split(key, B).
     num_restarts : int
-        Number of starting guesses.
+        Number of starting guesses per pair.
     tol : float
         A restart counts as converged if |x1 - x(1)| < tol.
     init_noise : float
         Standard deviation of the restart perturbations, relative to |x1 - x0|.
     n_steps : int
         Number of fixed integration steps per shot, passed to `exp_map`
-        (see `shoot_geodesics` for the accuracy of the default, 512).
+        (see `shoot_geodesics_cma` for the accuracy of the default, 512).
 
     Returns
     -------
-    best_v0 : array, shape (d,)
-        Initial velocity of the shortest converged geodesic. Pass it to
-        `euclid_geodesics.geodesic_path` for the path.
+    best_v0s : array, shape (B, d)
+        Initial velocity of the shortest converged geodesic for each pair.
+        Pass it to `euclid_geodesics.geodesic_path` for the path.
+
+    Raises
+    ------
+    RuntimeError
+        If no restart converged for some pair; the message lists those pairs.
     """
-    def resid(v0, args):
-        return x1 - euclid_geodesics.exp_map(g_inv, x0, v0, n_steps)
+    def solve_one_pair(x0, x1, key):
+        def resid(v0, args):
+            return x1 - euclid_geodesics.exp_map(g_inv, x0, v0, n_steps)
 
-    # Starting guesses: the straight line, then perturbed copies of it.
-    noise = init_noise * jnp.linalg.norm(x1 - x0) * jax.random.normal(
-        key, (num_restarts, x0.shape[0]))
-    v0_inits = (x1 - x0) + noise.at[0].set(0.0)
+        # Starting guesses: the straight line, then perturbed copies of it.
+        noise = init_noise * jnp.linalg.norm(x1 - x0) * jax.random.normal(
+            key, (num_restarts, x0.shape[0]))
+        v0_inits = (x1 - x0) + noise.at[0].set(0.0)
 
-    # Run all restarts at once. throw=False: a restart that does not converge
-    # is skipped below instead of raising an error.
-    def solve(v0_init):
-        return optimistix.least_squares(
-            resid, LevenbergMarquardt(tol * 0.1, tol * 0.1), v0_init,
-            options=dict(jac="bwd"), throw=False).value
-    v0s = jax.jit(jax.vmap(solve))(v0_inits)
+        # Run all restarts at once. throw=False: a restart that does not
+        # converge is skipped below instead of raising an error.
+        def solve(v0_init):
+            return optimistix.least_squares(
+                resid, LevenbergMarquardt(tol * 0.1, tol * 0.1), v0_init,
+                options=dict(jac="bwd"), throw=False).value
+        v0s = jax.vmap(solve)(v0_inits)
 
-    # Keep the shortest restart whose geodesic lands within tol of x1.
-    errors = jax.vmap(lambda v: jnp.linalg.norm(resid(v, None)))(v0s)
-    lengths = jax.vmap(lambda v: euclid_geodesics.geodesic_length(g_inv, x0, v))(v0s)
-    lengths = jnp.where(errors < tol, lengths, jnp.inf)
-    if not jnp.isfinite(lengths.min()):
-        raise RuntimeError("Shooting method did not converge.")
-    return v0s[jnp.argmin(lengths)]
+        # Keep the shortest restart whose geodesic lands within tol of x1.
+        errors = jax.vmap(lambda v: jnp.linalg.norm(resid(v, None)))(v0s)
+        lengths = jax.vmap(lambda v: euclid_geodesics.geodesic_length(g_inv, x0, v))(v0s)
+        lengths = jnp.where(errors < tol, lengths, jnp.inf)
+        best = jnp.argmin(lengths)
+        return v0s[best], jnp.isfinite(lengths[best])
+
+    # Compiled once per call, so it always uses the current g_inv (see
+    # `shoot_geodesics_cma`).
+    best_v0s, converged = jax.jit(jax.vmap(solve_one_pair))(x0s, x1s, keys)
+    if not bool(jnp.all(converged)):
+        failed = jnp.flatnonzero(~converged).tolist()
+        raise RuntimeError(f"Shooting method did not converge for pairs {failed}.")
+    return best_v0s

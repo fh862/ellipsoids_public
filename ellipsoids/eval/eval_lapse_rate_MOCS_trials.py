@@ -33,7 +33,10 @@ from analysis.utils_load import get_path
 # Base directory where experiment data is stored
 base_dir = get_path("dropbox_root_mac")
 
-subN = 2
+subN = 1
+num_sessions_combined = 1  # Set to 2 to pool consecutive 3D/6D sessions.
+if num_sessions_combined < 1:
+    raise ValueError("num_sessions_combined must be a positive integer.")
 
 # choose dataset
 #dcfg = DatasetConfig_6D.human_fullcube(base_dir, subN)
@@ -47,8 +50,20 @@ session_files, session_file_name_part1 = \
                                                exptCond = dcfg.exptCond
                                                )
 
-# Load session data from the files
-data_allSessions = load_expt_data.load_data_all_sessions(session_files)
+# Allow missing files at the end while preserving session numbering.
+data_allSessions = []
+for session_idx, session_file in enumerate(session_files):
+    loaded = load_expt_data.load_data_all_sessions([session_file])
+    if loaded and session_idx != len(data_allSessions):
+        raise ValueError(
+            f"Session {len(data_allSessions) + 1} could not be loaded for subject {subN}, "
+            "but a later session was found."
+        )
+    data_allSessions.extend(loaded)
+
+n_sessions = len(data_allSessions)
+if not n_sessions:
+    raise ValueError(f"No session data could be loaded for subject {subN}.")
 
 # ---------------------------------------------------------------------------
 # Extract MOCS trials
@@ -110,12 +125,11 @@ for idx, ref_stimulus in enumerate(unique_xref):
 # Compute catch-trial performance for each session
 # ---------------------------------------------------------------------------
 # Per-session summary statistics for catch trials
-pC_easy_trials = np.full((dcfg.nSession,), np.nan)      # proportion correct
-num_easy_trials = np.full((dcfg.nSession,), np.nan)     # number of catch trials
-num_correct_trials = np.full((dcfg.nSession,), np.nan)  # number correct on catch trials
+num_easy_trials = np.full((n_sessions,), np.nan)     # number of catch trials
+num_correct_trials = np.full((n_sessions,), np.nan)  # number correct on catch trials
 
 # Loop over each session
-for session_idx in range(dcfg.nSession):
+for session_idx in range(n_sessions):
     # Responses from trials identified as catch/easy trials in this session
     y_easy_trials = []
 
@@ -146,19 +160,23 @@ for session_idx in range(dcfg.nSession):
     num_correct_trials[session_idx] = np.sum(y_easy_trials)
     num_easy_trials[session_idx] = len(y_easy_trials)
 
-    # print out the results
-    if num_easy_trials[session_idx] != 0:
-        pC_easy_trials[session_idx] = (
-            num_correct_trials[session_idx] / num_easy_trials[session_idx]
-        )
-        print(
-            f'Session {session_idx+1}: Catch trial pC = '
-            f'{int(num_correct_trials[session_idx])}/'
-            f'{int(num_easy_trials[session_idx])} = '
-            f'{pC_easy_trials[session_idx]:.4f}'
-        )
+# Report catch-trial performance for consecutive groups of sessions
+pC_easy_trials = []
+for start in range(0, n_sessions, num_sessions_combined):
+    stop = min(start + num_sessions_combined, n_sessions)
+    session_label = f'Session {start + 1}'
+    if stop > start + 1:
+        session_label += f'-{stop}'
+
+    num_correct = int(np.sum(num_correct_trials[start:stop]))
+    num_catch = int(np.sum(num_easy_trials[start:stop]))
+    if num_catch:
+        pC = num_correct / num_catch
+        print(f'{session_label}: Catch trial pC = {num_correct}/{num_catch} = {pC:.4f}')
     else:
-        print(f'Session {session_idx+1} does not include any Sobol catch trials.')
+        pC = np.nan
+        print(f'{session_label} does not include any Sobol catch trials.')
+    pC_easy_trials.append(pC)
 
 # ---------------------------------------------------------------------------
 # Aggregate catch-trial performance across sessions

@@ -1452,9 +1452,12 @@ if (plotDiv) {{
     ):
         """
         Add 3D polylines for ellipse slices (each entry is iterable of (x, y, z)).
+        `color` is one color, or an (N, 3) array with one color per point.
         """
         if color is None:
             color = self.to_rgb_str(self.st.sEll_line_color)
+        elif np.ndim(color) == 2:  # one color per point
+            color = [self.to_rgb_str(c) for c in color]
         else:
             color = self.to_rgb_str(color)
 
@@ -1537,7 +1540,44 @@ if (plotDiv) {{
             hoverinfo="skip",
         ))
         return fig
-    
+
+    def add_mesh_surface(
+        self,
+        fig,
+        verts,
+        faces,
+        color,
+        opacity=0.2,
+        name=None,
+        legendgroup=None,
+        showlegend=False,
+    ):
+        """
+        Add a triangle mesh as a translucent shaded surface. `color` is one
+        color, or an (N, 3) array with one color per vertex.
+
+        Used for: eval_equal_geodesic_contour.
+        """
+        verts = np.asarray(verts, float)
+        faces = np.asarray(faces, int)
+        if np.ndim(color) == 2:  # one color per vertex
+            color_kw = dict(vertexcolor=[self.to_rgb_str(c) for c in color])
+        else:
+            color_kw = dict(color=self.to_rgb_str(color))
+        fig.add_trace(go.Mesh3d(
+            x=verts[:, 0], y=verts[:, 1], z=verts[:, 2],
+            i=faces[:, 0], j=faces[:, 1], k=faces[:, 2],
+            **color_kw,
+            opacity=opacity,
+            lighting=self.lighting,
+            lightposition=self.light_position,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
+            hoverinfo="skip",
+        ))
+        return fig
+
     def add_ellipsoid_surface(self, fig, X, Y, Z, color_str):
         """Internal helper: add a single ellipsoid surface to `fig`."""
         fig.add_trace(go.Surface(
@@ -1756,7 +1796,64 @@ if (plotDiv) {{
                 hovertemplate=hovertemplate,
             )
         return fig
-        
+
+    def add_ellipsoids_along_path_slider(self, fig, centers, covs, center_rgb,
+                                         slider_labels, paths=None,
+                                         slider_prefix="Points: "):
+        """
+        Add sets of ellipsoids, each optionally with a geodesic path, and a
+        slider that shows one set at a time (e.g. the reference and one
+        comparison with the path between them). Call it after adding the
+        traces that should always be visible; those stay visible.
+
+        Used for: eval_geodesics_along_achromatic (ellipsoids and geodesics).
+
+        Parameters
+        ----------
+        fig : plotly Figure
+        centers : list of arrays, each shape (n_i, 3)
+            Ellipsoid centers of set i (W units).
+        covs : list of arrays, each shape (n_i, 3, 3)
+            Covariance matrices at those centers.
+        center_rgb : list of arrays, each shape (n_i, 3)
+            Surface colors in [0, 1].
+        slider_labels : list of str
+            One label per set, shown on the slider.
+        paths : list of arrays, each shape (T_i, 3), optional
+            A path shown with set i (drawn with `add_geodesic_paths`).
+        slider_prefix : str
+            Text before the current label.
+        """
+        n_sets = len(centers)
+        if not (len(covs) == len(center_rgb) == len(slider_labels) == n_sets) or \
+                (paths is not None and len(paths) != n_sets):
+            raise ValueError("Every input needs one entry per set.")
+
+        # Add each set's traces after the always-visible ones, recording which
+        # set every new trace belongs to.
+        n_fixed = len(fig.data)
+        trace_set = []
+        for i in range(n_sets):
+            n_before = len(fig.data)
+            self.plot_ellipsoids_mesh_cov(fig, np.asarray(centers[i]), np.asarray(covs[i]),
+                                          center_rgb=np.asarray(center_rgb[i]), batch=True)
+            if paths is not None:
+                self.add_geodesic_paths(fig, [np.asarray(paths[i])])
+            trace_set += [i] * (len(fig.data) - n_before)
+        for t, i in enumerate(trace_set):
+            fig.data[n_fixed + t].visible = (i == 0)
+
+        steps = [dict(method="restyle",
+                      args=[{"visible": [True] * n_fixed + [j == i for j in trace_set]}],
+                      label=str(slider_labels[i]))
+                 for i in range(n_sets)]
+        fig.update_layout(sliders=[dict(
+            active=0, steps=steps, pad=dict(t=20),
+            currentvalue=dict(prefix=slider_prefix,
+                              font=dict(size=int(self.st.font_size))),
+        )])
+        return fig
+
     def apply_3d_layout(self, fig):
         fs = int(self.st.font_size)
         tick_fs = int(self.st.tick_font_size) if self.st.tick_font_size is not None else fs

@@ -23,7 +23,6 @@ color_thres_data = color_thresholds(2, baseDir,  plane_2D = 'Isoluminant plane')
 color_thres_data.load_transformation_matrix()
 # Load Wishart model fits
 color_alg = 'CIE1994'
-color_thres_data.load_CIE_data(CIE_version = color_alg) 
 # Retrieve specific data from Wishart_data
 color_thres_data.load_model_fits(CIE_version= color_alg) 
 gt_Wishart = color_thres_data.get_data('model_pred_Wishart', dataset = 'Wishart_data')

@@ -215,12 +215,13 @@ class TestFileLookupAndData(unittest.TestCase):
             self.colors.load_transformation_matrix()
 
     def test_get_data_lists_available_keys(self):
-        self.colors.CIE_data = {"stim3D": 1}
-        self.assertEqual(self.colors.get_data("stim3D"), 1)
-        with self.assertRaisesRegex(KeyError, "stim3D"):
+        self.colors.Wishart_data = {"model_pred_Wishart": 1}
+        self.assertEqual(self.colors.get_data("model_pred_Wishart"), 1)
+        self.assertEqual(self.colors.get_data("model_pred_Wishart", dataset="Wishart_data"), 1)
+        with self.assertRaisesRegex(KeyError, "model_pred_Wishart"):
             self.colors.get_data("missing")
         with self.assertRaises(ValueError):
-            self.colors.get_data("stim3D", dataset="other")
+            self.colors.get_data("model_pred_Wishart", dataset="CIE_data")
 
 
 if __name__ == "__main__":

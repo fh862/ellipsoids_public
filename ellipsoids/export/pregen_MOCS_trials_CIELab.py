@@ -42,8 +42,7 @@ if stim_dims == 2:
                                         baseDir, 
                                         plane_2D = plane_2D)
     SUBJ_gt_Wishart = 'CIE1994'
-    color_thres_data.load_CIE_data(CIE_version = SUBJ_gt_Wishart)
-    color_thres_data.load_model_fits(CIE_version = SUBJ_gt_Wishart)  
+    color_thres_data.load_model_fits(CIE_version = SUBJ_gt_Wishart)
 
     if plane_2D == 'Isoluminant plane':
         color_thres_data.load_transformation_matrix()

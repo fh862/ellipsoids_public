@@ -98,24 +98,6 @@ class ModelFitFilenames:
         else:
             return ModelFitFilenames().base_2d_filename.format(plane=plane_2D)
 
-@dataclass(frozen=True)
-class CIEDataFilenames:
-    isoluminant_2d: str = 'Isothreshold_ellipses_isoluminant{cie}.pkl'
-    general_2d: str = 'Isothreshold_ellipses_3slices{cie}.pkl'
-    ellipsoid_3d: str = 'Isothreshold_ellipsoid_CIELABderived{cie}.pkl'
-
-    @staticmethod
-    def get_filename(color_dimension: int, plane_2D: str = '', cie_version: str = '') -> str:
-        cie_suffix = f'_{cie_version}'
-        if color_dimension == 2:
-            if plane_2D == 'Isoluminant plane':
-                return CIEDataFilenames().isoluminant_2d.format(cie=cie_suffix)
-            else:
-                return CIEDataFilenames().general_2d.format(cie=cie_suffix)
-        else:
-            return CIEDataFilenames().ellipsoid_3d.format(cie=cie_suffix)
-
-
 #%%
 class color_thresholds():
     def __init__(self, color_dimension, data_base_dir, plane_2D="Isoluminant plane",
@@ -134,7 +116,8 @@ class color_thresholds():
             'Isoluminant plane', or 'LSisolating plane'. Sets
             `fixed_color_dim` and `varying_color_dim`.
         fixed_value : float, optional
-            Value (N unit) of the fixed RGB channel, used in 2D file names.
+            Value (N unit) of the fixed RGB channel of a 2D RGB slice. Plotting
+            uses it to fill in the fixed channel when coloring stimuli.
         """
         if color_dimension not in (2, 3):
             raise ValueError("color_dimension must be either 2 or 3.")
@@ -143,7 +126,6 @@ class color_thresholds():
         self.fixed_value = fixed_value
         self.plane_2D = plane_2D
         self.base_path = data_base_dir
-        self.CIE_data = dict()
         self.Wishart_data = dict()
 
         if self.color_dimension == 2:
@@ -187,43 +169,6 @@ class color_thresholds():
         return paths[0]
 
     #%%
-    def load_CIE_data(self, CIE_version='', num_grid_pts=5):
-        """
-        Load CIELab-simulated thresholds for the 2D or 3D case into `CIE_data`.
-
-        Parameters
-        ----------
-        CIE_version : {'', 'CIE1976', 'CIE1994', 'CIE2000'}, optional
-            Color-difference formula used to simulate the thresholds.
-        num_grid_pts : int, optional
-            Number of reference grid points per dimension.
-        """
-        if CIE_version not in {'', 'CIE1994', 'CIE1976', 'CIE2000'}:
-            raise ValueError('Only CIE versions 1976, 1994, and 2000 are supported.')
-    
-        file_name = CIEDataFilenames.get_filename(
-            color_dimension=self.color_dimension,
-            plane_2D=self.plane_2D if self.color_dimension == 2 else '',
-            cie_version=CIE_version
-        )
-    
-        file_path = self._find_exact_path(file_name)
-        self.file_path_CIE_data = file_path
-        with open(file_path, 'rb') as f:
-            data = dill.load(f)
-    
-        stim_key = f'stim{self.color_dimension}D'
-        results_key = f'results{self.color_dimension}D'
-        
-        print(f"Loaded CIELab simulated data for {self.color_dimension}D case.\n"
-              f"Number of grid points = {num_grid_pts}")
-        if self.color_dimension == 2 and self.plane_2D != 'Isoluminant plane':
-            self.CIE_data[stim_key] = data[f'stim_grid{num_grid_pts}_fixedVal{self.fixed_value}']
-            self.CIE_data[results_key] = data[f'results_grid{num_grid_pts}_fixedVal{self.fixed_value}']                
-        else:
-            self.CIE_data[stim_key] = data[f'stim_grid{num_grid_pts}']
-            self.CIE_data[results_key] = data[f'results_grid{num_grid_pts}']
-            
     def load_model_fits(self, CIE_version='CIE1994'):
         """
         Load the Wishart model fits for the current plane into `Wishart_data`.
@@ -337,26 +282,27 @@ class color_thresholds():
 
         return forward_path, inverse_path, forward_matrix, inverse_matrix
 
-    def get_data(self, key, dataset='CIE_data'):
+    def get_data(self, key, dataset='Wishart_data'):
         """
-        Return one entry of `CIE_data` or `Wishart_data`.
+        Return one entry of `Wishart_data` (the fits loaded by `load_model_fits`).
 
         Parameters
         ----------
         key : str
             Key of the entry to retrieve.
-        dataset : {'CIE_data', 'Wishart_data'}, optional
-            Which stored dictionary to query.
+        dataset : {'Wishart_data'}, optional
+            Which stored dictionary to query. Only `Wishart_data` exists now;
+            the argument is kept because callers pass it explicitly.
 
         Raises
         ------
         ValueError
-            If `dataset` is not one of the two dictionaries.
+            If `dataset` is not 'Wishart_data'.
         KeyError
-            If `key` is not in the selected dictionary; the message lists the
+            If `key` is not in the dictionary; the message lists the
             available keys.
         """
-        if dataset not in ('CIE_data', 'Wishart_data'):
+        if dataset != 'Wishart_data':
             raise ValueError(f"Dataset '{dataset}' does not exist.")
         data = getattr(self, dataset)
         if key not in data:

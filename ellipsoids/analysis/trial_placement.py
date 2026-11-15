@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Literal, Union
 from copy import deepcopy
-import os
 from analysis.MOCS_thresholds import sim_MOCS_trials
 from analysis.ellipses_tools import covMat_to_ellParamsQ, distance_to_ellipse_boundary, \
     compute_radii_scaler_to_reach_targetPC
@@ -142,28 +141,18 @@ class NonAdaptiveTrialPlacement(ABC):
             ndims, fixed_color_dim, varying_color_dim, stim_space
 
         """
-        # One unified mapping (including 3D) keeps the control flow simple and prevents
-        # partially-updated config states.
-        space_mappings = {
-            'R':  dict(ndims=2, fixed_color_dim=0, varying_color_dim=[1, 2],
-                       stim_space='GB plane'),
-            'G':  dict(ndims=2, fixed_color_dim=1, varying_color_dim=[0, 2],
-                       stim_space='RB plane'),
-            'B':  dict(ndims=2, fixed_color_dim=2, varying_color_dim=[0, 1],
-                       stim_space='RG plane'),
-            'lum': dict(ndims=2, fixed_color_dim=2, varying_color_dim=[0, 1],
-                        stim_space='Isoluminant plane'),
-            '': dict(ndims=3, fixed_color_dim=None, varying_color_dim=[0,1,2],
-                       stim_space='cube'),
-        }
-    
-        if self.config.fixed_plane not in space_mappings:
-            allowed = ", ".join(space_mappings.keys())
-            raise ValueError(f"Unknown fixed_plane={self.config.fixed_plane!r}. Allowed: {allowed}")
-    
-        spec = space_mappings[self.config.fixed_plane]
-        for k, v in spec.items():
-            setattr(self.config, k, v)
+        # fixed_plane -> (fixed channel, stimulus-space name). The isoluminant plane keeps
+        # its filler coordinate in the third slot, like the RG plane; the cube has none.
+        planes = {'R': (0, 'GB plane'), 'G': (1, 'RB plane'), 'B': (2, 'RG plane'),
+                  'lum': (2, 'Isoluminant plane'), '': (None, 'cube')}
+        if self.config.fixed_plane not in planes:
+            raise ValueError(f"Unknown fixed_plane={self.config.fixed_plane!r}. "
+                             f"Allowed: {', '.join(map(repr, planes))}")
+
+        fd, self.config.stim_space = planes[self.config.fixed_plane]
+        self.config.fixed_color_dim = fd
+        self.config.varying_color_dim = [d for d in range(3) if d != fd]
+        self.config.ndims = len(self.config.varying_color_dim)
             
         # --- sanity checks ---
         # If using a fixed reference grid, the grid resolution must be specified.
@@ -310,8 +299,8 @@ class TrialPlacement_CIELab(NonAdaptiveTrialPlacement):
              The jitter magnitude scales with the step length ||comp_thres - ref||:
                  jitter ~ N(0, (||Δ|| * random_jitter))
 
-          4) Compute ΔE(ref, comp) and generate a binary response using a Weibull
-             psychometric function.
+          4) Optionally (`run_sim(..., flag_sim_resp=True)`), compute ΔE(ref, comp) and
+             generate a binary response using a Weibull psychometric function.
 
         Notes
         -----
@@ -324,7 +313,9 @@ class TrialPlacement_CIELab(NonAdaptiveTrialPlacement):
             * scipy's scrambled Sobol sampler (references and direction angles);
             * NumPy's global stream (`np.random.seed` at the start of `run_sim`), which is
               shared, in trial order, by the threshold search's random starting lengths
-              (`SimThresCIELab.find_vecLen`), the jitter, and the Bernoulli responses;
+              (`SimThresCIELab.find_vecLen`), the jitter, and the Bernoulli responses
+              (the response draw is made even when responses are not simulated, so the
+              stimuli don't depend on `flag_sim_resp`);
             * in `TrialPlacement_sobolRef_W`, a local `default_rng` for the covariance
               scaler (`compute_radii_scaler_to_reach_targetPC`).
           The W model's p(correct) uses the fit's own JAX key (`opt_key`), not this seed.
@@ -543,7 +534,7 @@ class TrialPlacement_CIELab(NonAdaptiveTrialPlacement):
             
         return deltaE, probC, resp_binary
 
-    def run_sim(self, sim_CIELab):
+    def run_sim(self, sim_CIELab, flag_sim_resp=False):
         """
         Simulate trials with Sobol-sampled or fixed-grid references (config.fixed_ref).
 
@@ -552,14 +543,17 @@ class TrialPlacement_CIELab(NonAdaptiveTrialPlacement):
           2) Define a threshold comparison stimulus in the chosen direction such that
              ΔE(ref, comp_thres) = deltaE_1JND (using the configured CIE metric).
           3) Add Gaussian jitter around that threshold point.
-          4) Convert to RGB if needed, compute ΔE, map through psychometric function,
-             and sample a binary response.
-    
+          4) If `flag_sim_resp`: convert to RGB if needed, compute ΔE, map through the
+             psychometric function, and sample a binary response. Otherwise deltaE,
+             probC and resp_binary stay NaN.
+
         Parameters
         ----------
         sim_CIELab : object
             Helper that computes ΔE and (for isoluminant plane) can solve for the
             threshold point along a direction.
+        flag_sim_resp : bool, default False
+            Whether to simulate responses (step 4). The stimuli are the same either way.
 
         """
         # Seed NumPy's global stream (None = fresh entropy). Threshold-search starts, jitter,
@@ -594,8 +588,13 @@ class TrialPlacement_CIELab(NonAdaptiveTrialPlacement):
             self.sim['comp'][:, i] = self._validate_stim(stim_thres + self._jitter(ref_i, stim_thres))
             
             # 4) ΔE, p(correct), and a binary response
-            self.sim['deltaE'][i], self.sim['probC'][i], self.sim['resp_binary'][i] = \
-                self.run_sim_1ref(sim_CIELab, ref_i, self.sim['comp'][:, i])
+            if flag_sim_resp:
+                self.sim['deltaE'][i], self.sim['probC'][i], self.sim['resp_binary'][i] = \
+                    self.run_sim_1ref(sim_CIELab, ref_i, self.sim['comp'][:, i])
+            else:
+                # Still make the response's draw, so later trials' threshold searches
+                # and jitter (same global stream) don't depend on flag_sim_resp
+                np.random.rand()
                 
     def setup_WeibullFunc(self, alpha, beta, guessing_rate, deltaE_1JND):
         """
@@ -834,8 +833,21 @@ class TrialPlacement_sobolRef_W(TrialPlacement_CIELab):
     
     def run_sim_1ref(self, ref, comp):
         """
-        Simulates a single trial of an oddity task using the Wishart model to predict 
-        the probability of correctly identifying the odd stimulus. 
+        Simulate oddity-task responses for a batch of trials, using the Wishart model
+        to predict the probability of correctly identifying the odd stimulus. (The
+        name comes from the base class; despite it, this takes many trials at once.)
+
+        Parameters
+        ----------
+        ref, comp : array, shape (N, len(varying_color_dim))
+            Reference and comparison stimuli in W units, varying dims only.
+
+        Returns
+        -------
+        probC : array, shape (N,)
+            Model-predicted p(correct).
+        resp_binary : array, shape (N,)
+            Bernoulli draws (1 = correct, 0 = incorrect).
         """
         
         # Compute the probability of correctly identifying the odd stimulus 
@@ -848,7 +860,7 @@ class TrialPlacement_sobolRef_W(TrialPlacement_CIELab):
         
         return probC, resp_binary    
 
-    def run_sim(self, flag_approx = True):
+    def run_sim(self, flag_approx = True, flag_sim_resp = False, batch_size = 5000):
         """
         Simulate non-adaptive trials with Sobol-sampled or fixed-grid references
         (config.fixed_ref) and Sobol-sampled directions.
@@ -867,7 +879,21 @@ class TrialPlacement_sobolRef_W(TrialPlacement_CIELab):
            coordinates, clip to bounds).
         5) Add Gaussian jitter around the threshold point (scaled by the ref→threshold distance).
         6) Store the final comparison stimuli in `self.sim['comp']`.
-        
+        7) If `flag_sim_resp`: evaluate the model-predicted p(correct) for each final
+           (ref, comp) pair and draw a binary response. Otherwise probC and resp_binary
+           stay NaN.
+
+        Parameters
+        ----------
+        flag_approx : bool, default True
+            Approximate (True) or exact (False) threshold placement (step 3).
+        flag_sim_resp : bool, default False
+            Whether to simulate responses (step 7). Responses are drawn after all stimuli
+            are placed, so the stimuli are the same either way.
+        batch_size : int, default 5000
+            Trials per p(correct) evaluation in step 7. The Monte Carlo p(correct) holds
+            mc_samples draws per trial in memory; lower this if memory runs out.
+
         """
         # Seed NumPy's global stream (shared by jitter and responses; see the
         # TrialPlacement_CIELab docstring for how random_seed is used)
@@ -911,3 +937,12 @@ class TrialPlacement_sobolRef_W(TrialPlacement_CIELab):
         
         # 6) Final comparisons for each simulated trial.
         self.sim["comp"] = self._validate_stim(stim_thres_v + jitter)
+
+        # 7) Model-predicted p(correct) and a binary response per trial, in batches
+        if flag_sim_resp:
+            vd = self.config.varying_color_dim
+            ref_v, comp_v = self.sim["ref"][vd].T, self.sim["comp"][vd].T   # (nSims, |vd|)
+            for s in range(0, self.config.nSims, batch_size):
+                b = slice(s, s + batch_size)
+                self.sim["probC"][b], self.sim["resp_binary"][b] = \
+                    self.run_sim_1ref(ref_v[b], comp_v[b])

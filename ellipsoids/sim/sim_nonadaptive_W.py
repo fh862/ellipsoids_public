@@ -47,9 +47,11 @@ comparison stimulus.
     - As in the exact method, add Gaussian jitter around that threshold point to
       generate the final comparison stimulus.
 
-In both approaches, after placing the comparison stimulus, the response is simulated
-by evaluating the model-predicted p(correct) for the (ref, comp) pair and sampling
-a Bernoulli response (1 = correct, 0 = incorrect).
+In both approaches, if `flag_sim_resp` is True, the response is then simulated by
+evaluating the model-predicted p(correct) for each (ref, comp) pair and sampling a
+Bernoulli response (1 = correct, 0 = incorrect). Otherwise the responses stay NaN:
+the experiment's fallback trials only need the stimuli. The stimuli are the same
+either way.
 
 """
 
@@ -83,6 +85,9 @@ jitter = 0.3               # relative jitter level (sensible range: 0.1 - 0.5)
 #   - False: exact threshold search via dense grid evaluation along each direction
 #       (can be memory-intensive; large nSims may exhaust RAM).
 flag_approx_thres = True
+# Simulate a binary response per trial from the ground-truth model's p(correct).
+# Not needed for the experiment's fallback trials; slow for large nSims.
+flag_sim_resp = False
 flag_plot = True           # plot the trial placement
 
 # To slot these simulated Sobol trials into the real experiment as "fallback"
@@ -163,17 +168,20 @@ plane_tag = (color_thres_data.plane_2D.replace(" ", "") + '_') if ndims == 2 els
 thres_tag = 'true_thres_' if not flag_approx_thres else ''
 grid_tag = (f"grid{num_grid_pts}_ref{'_'.join(map(str, ref_sobol_lb[:ndims]))}"
             f"to{'_'.join(map(str, ref_sobol_ub[:ndims]))}_") if fixed_ref else ''
+# Files with simulated responses are marked; files without keep the experiments' name
+resp_tag = 'simResp_' if flag_sim_resp else ''
 file_stem = f"SimTrialData_nonadaptive_{expt_dims}DExpt_{plane_tag}{thres_tag}{grid_tag}"+\
-    f"{nSims}total_jitter{jitter}_seed{rnd_seed}"
+    f"{resp_tag}{nSims}total_jitter{jitter}_seed{rnd_seed}"
 print(f"Output file stem: {file_stem}")
 
 #%%
 # -----------------------------------------------------------
 # 4. Simulate trials
 # -----------------------------------------------------------
-# Generates refs/dirs, finds threshold comps, jitters, and simulates responses
+# Generates refs/dirs, finds threshold comps, jitters, and (if flag_sim_resp)
+# simulates responses
 sim_trial = TrialPlacement_sobolRef_W(gt_Wishart, stim_config)
-sim_trial.run_sim(flag_approx=flag_approx_thres)
+sim_trial.run_sim(flag_approx=flag_approx_thres, flag_sim_resp=flag_sim_resp)
 
 # Trial list, one row per trial (W units): xref, x1 (nSims, ndims); y (nSims,).
 # sim["ref"] and sim["comp"] are stored dims-first: (nd_total, nSims).

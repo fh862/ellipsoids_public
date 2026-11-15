@@ -24,9 +24,10 @@ Each trial is simulated in three steps:
      with `SimThresCIELab`; no precomputed thresholds are loaded.
   2. Add Gaussian jitter to that threshold point. In each channel, the jitter SD
      is `jitter` times the reference-to-threshold distance.
-  3. Compute ΔE between the reference and the jittered comparison, map it to
-     p(correct) with a Weibull psychometric function, and draw a binary response
-     from a Bernoulli distribution (1 = correct, 0 = incorrect).
+  3. If `flag_sim_resp`: compute ΔE between the reference and the jittered
+     comparison, map it to p(correct) with a Weibull psychometric function, and draw
+     a binary response from a Bernoulli distribution (1 = correct, 0 = incorrect).
+     Otherwise the responses stay NaN; the stimuli are the same either way.
 
 The Weibull scale `alpha` is derived from `deltaE_1JND`, `beta`, and the guessing
 rate, so that ΔE = deltaE_1JND gives p(correct) = `target_pC`.
@@ -74,6 +75,7 @@ nSims = 60000                   # total number of simulated trials (Sobol points
                                # with fixed_ref, it must be divisible by num_grid_pts**stim_dims
 jitter = 0.3                   # jitter SD as a fraction of the ref-to-threshold distance; keep tiny for debugging
 rnd_seed = 0                   # for reproducibility
+flag_sim_resp = True           # simulate a binary response per trial (needed to fit the model)
 background_RGB = np.array([0.5, 0.5, 0.5])  # display background; also the CIELab white point
 # Monitor calibration (MMDDYYYY) for converting display RGB to XYZ (and, on the
 # isoluminant plane, W to RGB): the formal 3D experiment's display for the RGB cube,
@@ -171,9 +173,11 @@ elif plane_2D == 'Isoluminant plane':
 else:
     plane_tag = f"{plane_2D.replace(' ', '')}{fixed_val:g}_"
 sampling_tag = f"grid{num_grid_pts}" if fixed_ref else "sobol"
+# Files without responses are marked, so they can't overwrite a file with responses
+resp_tag = '' if flag_sim_resp else '_noResp'
 file_stem = f"SimTrialData_nonadaptive_{expt_dims}DExpt_{plane_tag}{colordiff_alg}_"+\
     f"dE{deltaE_1JND:g}_beta{beta:g}_{sampling_tag}_{nSims}total_jitter{jitter:g}_seed{rnd_seed}_"+\
-    f"ref{'_'.join(map(str, ref_lb))}to{'_'.join(map(str, ref_ub))}"
+    f"ref{'_'.join(map(str, ref_lb))}to{'_'.join(map(str, ref_ub))}{resp_tag}"
 print(f"Output file stem: {file_stem}")
 
 #%%
@@ -196,7 +200,7 @@ print(f"p(correct) at deltaE_1JND: {sim_trial.sim['pC_given_alpha_beta']:.4f}")
 sim_CIELab = SimThresCIELab(background_RGB, file_date=calib_date)
 
 # Run the simulation (slow: one threshold search per trial)
-sim_trial.run_sim(sim_CIELab)
+sim_trial.run_sim(sim_CIELab, flag_sim_resp=flag_sim_resp)
 
 #%%
 # -----------------------------------------------------------

@@ -5,24 +5,31 @@ Created on Sun Jun 30 21:58:01 2024
 
 @author: fangfang
 
-The goal of this script is to simulate AEPsych trials using a WPPM fit as the
-ground truth. The ground truth WPPM was obtained by fitting data collected
-without adaptive sampling. Instead, trials were placed near discrimination
-thresholds with added Gaussian noise. The thresholds were derived from
-CIE1994 predictions, corresponding to contours with ΔE = 2.5.
+Simulate the AEPsych trials of the color-discrimination experiment, using a
+WPPM fit as the ground-truth observer.
 
-This script supports simulations in both:
-    - a 2D/4D isoluminant plane (mapped to a square bounded between −1 and 1), and
-    - a 3D/6D color cube.
+Ground truth: a WPPM fit (fit_6d_simobserver.py) to 60,000 nonadaptive
+simulated trials (sim_nonadaptive_CIELab.py). Those trials were Sobol-sampled,
+placed near the CIEDE2000 threshold (ΔE = 1.68 at 66.7% correct) with Gaussian
+jitter, and their responses drawn from a Weibull psychometric function.
 
-The simulated trial data are saved to a pickle file and can be fitted later
-using separate analysis scripts.
+AEPsych runs the experiment's configuration and trial counts (run_6d_expt.py):
+three Sobol strategies (1,500 trials each) followed by 20,500 adaptive (EAVC)
+trials. Every AEPsych proposal gets a simulated response from the ground-truth
+WPPM, which is then told back to AEPsych. Only AEPsych trials are simulated here:
+the experiment's fallback Sobol trials and MOCS trials are never told to
+AEPsych, so they are simulated separately.
 
-NOTE:
-AEPsych 0.7.3 is not compatible with JAX 0.5.3. When running these simulation
-scripts, it is recommended to create a separate Python environment that has
-only AEPsych 0.7.3 installed (without JAX). A different environment can then
-be used for running the JAX-based analysis code.
+The stimulus dimensions can be set to 2 (4D, isoluminant plane, a square
+bounded between −1 and 1 in W) or 3 (6D, RGB cube), but the ground-truth fit
+loaded in Section 1 is the 6D one; a 4D run needs a 2D fit.
+
+Outputs (in ELPS_analysis/Simulation_DataFiles/<N>D/AEPsych/): the AEPsych
+database (.db) and a pickle (.pkl) with the simulated trials, to be fitted with
+fit_6d_simobserver.py.
+
+NOTE: the environment needs both AEPsych and JAX (for the ground-truth
+predictions), as the experiment's environment does.
 
 """
 import importlib.metadata
@@ -35,6 +42,7 @@ from dataclasses import replace
 from analysis.color_thres import color_thresholds
 from analysis.config_generator import ConfigGenerator
 from analysis.sim_trials import SimulateTrialGivenWishart
+from analysis.trial_sequence import shuffle_sobol_trials
 from analysis.cross_validation import expt_data
 from plotting.wishart_plotting import PlotSettingsBase 
 from plotting.adaptive_sampling_plotting import SamplingRefCompPairVisualization,\
@@ -44,24 +52,26 @@ from aepsych_client import AEPsychClient
 # Get the installed version of AEPsych
 aepsych_version = importlib.metadata.version("aepsych")
 
-#define output directory for output files and figures
-stim_dims = 2
-psyfield_dims = 4
+# Stimulus dimensions (2: isoluminant plane, 4D task; 3: RGB cube, 6D task)
+# and output directories for data files and figures
+stim_dims = 3
+psyfield_dims = stim_dims * 2
 baseDir = get_path("dropbox_root_mac")
 
 # Top-level analysis folder
-root = os.path.join(baseDir, "META_analysis")
+root = os.path.join(baseDir, "ELPS_analysis")
 
-# Subfolder corresponding to the current task dimensionality
-cie = os.path.join(f"{psyfield_dims}dTask", "CIE")
+# Subfolder for AEPsych simulations of this task dimensionality, next to the
+# nonadaptive simulations (e.g. 6D/CIE2000, 6D/gt_Wishart). File names record
+# the ground truth (_gt<coloralg>).
+sim_subdir = os.path.join(f"{psyfield_dims}D", "AEPsych")
 
-# Output directories for different types of results
-output_figDir_sims = os.path.join(root, "Simulation_FigFiles", cie)
-output_DBfileDir   = os.path.join(root, "Simulation_DataFiles", cie)
-output_fileDir     = os.path.join(root, "ModelFitting_DataFiles", cie)
+# Output directories: the AEPsych .db and the .pkl of simulated trials share a folder
+output_figDir  = os.path.join(root, "Simulation_FigFiles", sim_subdir)
+output_fileDir = os.path.join(root, "Simulation_DataFiles", sim_subdir)
 
 # Create directories if they do not already exist
-directories = [output_figDir_sims, output_DBfileDir, output_fileDir]
+directories = [output_figDir, output_fileDir]
 # Ensure directories exist (create if they don't)
 for directory in directories:
     os.makedirs(directory, exist_ok=True)
@@ -73,20 +83,26 @@ for directory in directories:
 # Additional keyword arguments needed for 2D stimulus configurations
 kwargs = {"plane_2D": "Isoluminant plane"} if stim_dims == 2 else {}
 
-# Initialize the color-threshold dataset object
+# Color-space helper (W <-> RGB conversions), used for plotting
 color_thres_data = color_thresholds(stim_dims, baseDir, **kwargs)
 
 # Load the W → display-color transformation used for the 2D task
 if stim_dims == 2:
     color_thres_data.load_transformation_matrix(file_date="02242025")
     
-# Load CIE-based predictions and the corresponding Wishart model fits
-coloralg = 'CIE1994'
-color_thres_data.load_CIE_data(CIE_version = coloralg)
-color_thres_data.load_model_fits(CIE_version = coloralg)  
+# Load the WPPM fit to the CIE-based nonadaptive simulated trials
+# (fitted with fit_6d_simobserver.py; model_pred_Wishart is saved in the file)
+coloralg = 'CIE2000'
+gt_fit_dir = os.path.join(baseDir, 'ELPS_analysis', 'ModelFitting_DataFiles',
+                          f'{psyfield_dims}D', coloralg)
+gt_fit_file = "Fitted_SimTrialData_nonadaptive_6DExpt_CIE2000_dE1.68_beta1.505_sobol_"+\
+    "60000total_jitter0.3_seed0_ref0.1_0.1_0.1to0.9_0.9_0.9_decayRate0.4_nBasisDeg5.pkl"
+gt_fit_path = os.path.join(gt_fit_dir, gt_fit_file)
+with open(gt_fit_path, 'rb') as f:
+    gt_fit = pickled.load(f)
 
-# Retrieve the fitted Wishart-model predictions from the loaded dataset
-gt_Wishart  = color_thres_data.get_data('model_pred_Wishart', dataset = 'Wishart_data')
+# Fitted Wishart-model prediction object used as the simulated observer
+gt_Wishart  = gt_fit['model_pred_Wishart']
 # Use a tiny bandwidth to make smoothing of the simulated choice probability negligible.
 gt_Wishart.opt_params['bandwidth'] = 1e-8
 
@@ -96,6 +112,10 @@ gt_Wishart.opt_params['bandwidth'] = 1e-8
 #------------------------------------------------------------------------------ 
 # simulation subject
 SUBJ  = 1
+# Seed for the simulated response draws (NumPy's global stream). AEPsych's own
+# Sobol strategies are not seeded, so trial placement still varies across runs.
+rnd_seed_resp = SUBJ
+np.random.seed(rnd_seed_resp)
 
 # Directory containing customized AEPsych configuration files
 path_str_config = get_path("aepsych_config_dir")
@@ -127,12 +147,12 @@ ub_all = [float(config_gen.config_parser.get(p,'upper_bound')) for p in par_name
 print(lb_all)
 print(ub_all)
 
-# Number of trials assigned to each strategy
-# Example:
-#   strategy 1: Sobol sampling in a smaller range
-#   strategy 2: Sobol sampling in a larger range
-#   strategy 3+: model-based adaptive strategies
-NTRIALS_STRAT = [300, 300, 300, 1100]  #[1500, 1500, 1500, 25500]
+# Number of trials assigned to each strategy:
+#   strategies 1-3: Sobol sampling over the same parameter bounds; their
+#                   comparison offsets are shrunk by the Sobol scalers below
+#                   (1/4, 2/4, 3/4), hence the names small/medium/large
+#   strategy 4:     model-based adaptive sampling (EAVC)
+NTRIALS_STRAT = [1500, 1500, 1500, 1500]  # same as the 6D experiment (run_6d_expt.py) #20500
 
 # Update the minimum number of trials for each strategy
 for strat_n, nT in zip(strat_names, NTRIALS_STRAT):
@@ -154,34 +174,37 @@ config_all = [config]
 
 #%% 
 #------------------------------------------------------------------------------ 
-# SECTION 3: Use AEPsych to for trial placement
+# SECTION 3: Use AEPsych for trial placement
 #------------------------------------------------------------------------------ 
-# define the server!
+# AEPsych server and client. The database name records the trial counts, subject,
+# response seed, and ground truth; the .pkl in Section 5 shares its stem.
 db_file_name = f"Sim{psyfield_dims}dTask_colorDiscrimination_"+\
                 f"{acqf_str}_{NTRIALS}Trials_{NTRIALS_STRAT[0]}_{NTRIALS_STRAT[1]}_"+\
-                f"{NTRIALS_STRAT[2]}_{NTRIALS_STRAT[3]}_sub{SUBJ}_gt{coloralg}.db"
-server = AEPsychServer(database_path = os.path.join(output_DBfileDir, db_file_name))
+                f"{NTRIALS_STRAT[2]}_{NTRIALS_STRAT[3]}_sub{SUBJ}_seed{rnd_seed_resp}_gt{coloralg}.db"
+server = AEPsychServer(database_path = os.path.join(output_fileDir, db_file_name))
 client = AEPsychClient(server=server)
 
 # Send a config message to the server, passing in a configuration filename
 client.configure(config_str=config)
 
-# Define a Sobol scaler list to be used in simulations.
-# if the length is smaller than the number of strategies, 1's will be automatically padded.
-# if the length is greater than the number of strategies, the extra part will be truncated.
+# Scalers applied to the comparison offsets, one per strategy (1 = unscaled)
 SOBOL_SCALER = [1/4, 2/4, 3/4, 1]
 
-# Create an instance of a simulation class. This class simulates color discrimination
-# responses. The responses are determined by the WPPM fit. Each time AEPsych hands back 
-# a pair of reference and comparison stimuli, the routine uses the WPPM fit to make 
-# predictions about the probability of correct responses, which is then used to simulate
-# a binary response.
+# As in the 6D experiment (run_6d_expt.py), shuffle the scalers of the first three
+# (Sobol) strategies across their trials, giving one scaler per AEPsych trial.
+# The adaptive strategy keeps its scaler of 1.
+customized_sobol_scaler = shuffle_sobol_trials(SOBOL_SCALER, NTRIALS_STRAT, 3,
+                                               seed=rnd_seed_resp)
+
+# Simulated observer. Each time AEPsych proposes a trial, the scaled comparison
+# offset is added to the reference, the ground-truth WPPM predicts p(correct) for
+# the pair, and a binary response is drawn and told back to AEPsych.
 AEPsych_trial_given_Wishart_gt = SimulateTrialGivenWishart(psyfield_dims,
                                                            config_all, 
                                                            gt_Wishart,
-                                                           val_scaler= SOBOL_SCALER
+                                                           customized_val_scaler=customized_sobol_scaler
                                                            )
-# start the simulation
+# Run all AEPsych trials (no fallback trials inserted; slow: many hours for 25,000 trials)
 AEPsych_trial_given_Wishart_gt.run_simulation(client)
 
 #%% 
@@ -189,7 +212,7 @@ AEPsych_trial_given_Wishart_gt.run_simulation(client)
 # SECTION 4: Visualize trial placement
 #------------------------------------------------------------------------------ 
 # Base plotting settings for all sampling visualizations
-pltSettings_base = PlotSettingsBase(fig_dir=output_figDir_sims, fontsize = 10)
+pltSettings_base = PlotSettingsBase(fig_dir=output_figDir, fontsize = 10)
 pltSampSettings = replace(Plot2DSamplingSettings(), **pltSettings_base.__dict__)
 
 # Visualization object for plotting reference–comparison stimulus pairs
@@ -199,6 +222,7 @@ sampling_vis = SamplingRefCompPairVisualization(stim_dims,
                                                 save_fig = False
                                                 )
 
+# Trials as told to AEPsych: reference and reference + scaled offset (W units)
 data_vis_AEPsych = expt_data(server._strats[-1].x[:,0:stim_dims], 
                              server._strats[-1].x[:,0:stim_dims] +\
                              server._strats[-1].x[:,stim_dims:],
@@ -208,7 +232,7 @@ data_vis_AEPsych = expt_data(server._strats[-1].x[:,0:stim_dims],
 marker_alpha = [0.5, 0.5, 0.5, 0.2]
 
 # Determine the index ranges of trials belonging to each strategy
-# (e.g., [0:300], [300:600], [600:900], [900:6000])
+# (here [0:1500], [1500:3000], [3000:4500], [4500:25000])
 slc_datapoints_to_show_lb = np.concatenate(([0], np.cumsum(NTRIALS_STRAT)[:-1]))
 slc_datapoints_to_show_ub = np.cumsum(NTRIALS_STRAT)
 
@@ -243,9 +267,9 @@ for i, (lb_i, ub_i) in enumerate(zip(slc_datapoints_to_show_lb, slc_datapoints_t
                                ax = ax, 
                                settings = pltSampSettings
                                )  
-    # Save the figure as a PDF
+    # Figures are shown, not saved; to save, uncomment the line below
     plt.show()
-    #fig.savefig(os.path.join(sims_path, f"{fig_name_i}.pdf"))    
+    #fig.savefig(os.path.join(output_figDir, fig_name_i))
             
 #%%
 # ---------------------------------------------------
@@ -254,10 +278,11 @@ for i, (lb_i, ub_i) in enumerate(zip(slc_datapoints_to_show_lb, slc_datapoints_t
 output_file = f"{db_file_name[:-3]}.pkl"
 full_path_file = os.path.join(output_fileDir, output_file)
 
-variable_names = ['aepsych_version','stim_dims','psyfield_dims','coloralg',
-                  'color_thres_data', 'gt_Wishart','SUBJ','file_config', 
+variable_names = ['aepsych_version','stim_dims','psyfield_dims','coloralg', 
+                  'gt_fit_path', 'rnd_seed_resp', 'color_thres_data', 
+                  'gt_Wishart','SUBJ','file_config', 
                   'par_names', 'strat_dict', 'lb_all', 'ub_all', 'NTRIALS',
-                  'config_all', 'db_file_name', 'SOBOL_SCALER', 
+                  'config_all', 'db_file_name', 'SOBOL_SCALER', 'customized_sobol_scaler',
                   'AEPsych_trial_given_Wishart_gt']
 vars_dict = {}
 
@@ -270,6 +295,7 @@ for var_name in variable_names:
         vars_dict[var_name] = None
         print(f"Variable '{var_name}' does not exist. Assigned as None.")
 
-# Write the list of dictionaries to a file using pickle
+# Write the dictionary to a pickle file. The simulated trials (xref, x1, binaryResp,
+# pX1, ...) are stored on AEPsych_trial_given_Wishart_gt.
 with open(full_path_file, 'wb') as f:
     pickled.dump(vars_dict, f)

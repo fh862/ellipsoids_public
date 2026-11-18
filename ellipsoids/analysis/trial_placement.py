@@ -36,7 +36,7 @@ class StimConfig_CIELab_RGB:
     fixed_val: float = 0.5
     nSims: int = 6000
     fixed_ref: bool = False      # True: references on a fixed grid; False: Sobol-sampled
-    num_grid_pts: int = 5        # grid points per dimension (fixed_ref=True only)
+    num_grid_pts: Optional[int] = None  # grid points per dimension; required when fixed_ref=True
     sobol_lb: list[float] = field(default_factory=lambda: [0.15, 0.15, 0.0])
     sobol_ub: list[float] = field(default_factory=lambda: [0.85, 0.85, 360.0])
     random_jitter: float = 0.3
@@ -58,7 +58,7 @@ class StimConfig_CIELab_isoluminant:
     gt: Literal['CIE1976', 'CIE1994', 'CIE2000'] = 'CIE1994'
     nSims: int = 6000
     fixed_ref: bool = False      # True: references on a fixed grid; False: Sobol-sampled
-    num_grid_pts: int = 5        # grid points per dimension (fixed_ref=True only)
+    num_grid_pts: Optional[int] = None  # grid points per dimension; required when fixed_ref=True
     random_jitter: float = 0.3
     sobol_lb: list[float] = field(default_factory=lambda: [-0.7, -0.7, 0.0])
     sobol_ub: list[float] = field(default_factory=lambda: [0.7, 0.7, 360.0])
@@ -91,7 +91,7 @@ class StimConfig_W_sobolref:
     fixed_val: Optional[float] = 1
     nSims: int = 6000
     fixed_ref: bool = False      # True: references on a fixed grid; False: Sobol-sampled
-    num_grid_pts: int = 7        # grid points per dimension (fixed_ref=True only)
+    num_grid_pts: Optional[int] = None  # grid points per dimension; required when fixed_ref=True
     random_jitter: float = 0.3
     sobol_lb: list[float] = field(default_factory=lambda: [-0.7, -0.7, 0.0])
     sobol_ub: list[float] = field(default_factory=lambda: [0.7, 0.7, 360.0])

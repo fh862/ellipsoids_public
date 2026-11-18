@@ -103,8 +103,6 @@ with open(gt_fit_path, 'rb') as f:
 
 # Fitted Wishart-model prediction object used as the simulated observer
 gt_Wishart  = gt_fit['model_pred_Wishart']
-# Use a tiny bandwidth to make smoothing of the simulated choice probability negligible.
-gt_Wishart.opt_params['bandwidth'] = 1e-8
 
 #%% 
 #------------------------------------------------------------------------------ 

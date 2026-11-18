@@ -9,13 +9,13 @@ Simulate oddity-task trials with non-adaptive trial placement and a CIELab ΔE
 ground truth (CIE1976, CIE1994, or CIE2000), on a 2D planar slice (4D psychometric
 field) or in the 3D RGB cube (6D psychometric field).
 
-Reference stimuli are either Sobol-sampled or fixed on a regular grid (`fixed_ref`);
-chromatic directions are always Sobol-sampled:
-  • Sobol references (fixed_ref = False): one Sobol point per trial, [dim1, dim2, θ]
+Reference stimuli are either Sobol-sampled or fixed on a regular grid, as set by
+`num_grid_pts`; chromatic directions are always Sobol-sampled:
+  • Sobol references (num_grid_pts = None): one Sobol point per trial, [dim1, dim2, θ]
     in 2D or [R, G, B, θ, φ] in 3D, so no reference location is repeated.
-  • Fixed-grid references (fixed_ref = True): `num_grid_pts` points per dimension,
-    spanning the same reference bounds. Each grid point gets an equal block of the
-    `nSims` trials, and only the angles (θ in 2D; θ and φ in 3D) are Sobol-sampled.
+  • Fixed-grid references (num_grid_pts = an integer): that many points per
+    dimension, spanning the same reference bounds. Each grid point gets an equal block
+    of the `nSims` trials, and only the angles (θ in 2D; θ and φ in 3D) are Sobol-sampled.
 The angle(s) set the chromatic direction of the comparison stimulus.
 
 Each trial is simulated in three steps:
@@ -69,10 +69,10 @@ if stim_dims == 2:
     plane_2D = "Isoluminant plane"   # "GB plane", "RB plane", "RG plane", "Isoluminant plane"
 psyfield_dims = 2 * stim_dims  # reference + comparison dimensions
 colordiff_alg = "CIE2000"      # ΔE formula: "CIE1976", "CIE1994", "CIE2000"
-fixed_ref = False              # True: references on a fixed grid; False: Sobol-sampled references
-num_grid_pts = 5               # fixed_ref only: grid points per dimension
+num_grid_pts = None            # references: None = Sobol-sampled; an integer = fixed grid with that many points per dimension
+fixed_ref = num_grid_pts is not None
 nSims = 60000                   # total number of simulated trials (Sobol points are best balanced for a power of 2);
-                               # with fixed_ref, it must be divisible by num_grid_pts**stim_dims
+                               # with a grid, it must be divisible by num_grid_pts**stim_dims
 jitter = 0.3                   # jitter SD as a fraction of the ref-to-threshold distance; keep tiny for debugging
 rnd_seed = 0                   # for reproducibility
 flag_sim_resp = True           # simulate a binary response per trial (needed to fit the model)

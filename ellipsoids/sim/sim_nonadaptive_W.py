@@ -5,53 +5,32 @@ Created on Mon Dec 16 13:27:53 2024
 
 @author: fangfang
 
-Simulate oddity-task trials with non-adaptive trial placement, using a
-Wishart-process model (WPPM) fit as the ground truth.
+Simulate oddity-task trials with non-adaptive placement, using a WPPM fit (to
+human or simulated data) as the ground-truth observer. Used, e.g., for the 6D
+experiment's fallback trials and for simulated datasets to fit.
 
-Discrimination thresholds come from a WPPM fit to human psychophysical data.
-Reference stimuli are either Sobol-sampled or fixed on a regular grid (`fixed_ref`);
-chromatic directions are always Sobol-sampled:
-  • Sobol references (fixed_ref = False): one Sobol point per trial,
-    [dim1, dim2, θ] on the 2D isoluminant plane (4D psychometric field) or
-    [dim1, dim2, dim3, θ, φ] in the 3D cube (6D psychometric field).
-  • Fixed-grid references (fixed_ref = True): `num_grid_pts` points per dimension,
-    spanning the same reference bounds. Each grid point gets an equal block of the
-    `nSims` trials, and only the angles (θ in 2D; θ and φ in 3D) are Sobol-sampled.
+References and directions (`num_grid_pts`):
+  • None: one Sobol point per trial, [dim1, dim2, θ] on the isoluminant plane
+    (4D field) or [dim1, dim2, dim3, θ, φ] in the cube (6D field).
+  • An integer n: references on an n-per-dimension grid, each with an equal block
+    of trials; only the directions are Sobol-sampled.
 
-For each reference and chromatic direction, there are two ways to place the
-comparison stimulus.
+Comparison: the threshold point along the direction (p(correct) = the fit's
+target, e.g. 66.7%) plus Gaussian jitter scaled by the ref-to-threshold distance.
+The threshold point is found
+  • exactly (flag_approx_thres = False): the step along the direction whose
+    p(correct) is closest to the target, from a dense grid search (memory-heavy
+    for large nSims); or
+  • approximately (flag_approx_thres = True): the boundary of the WPPM covariance
+    ellipse/ellipsoid at the reference, enlarged by one scalar that gives the
+    target p(correct) for a unit-covariance observer.
 
-(1) flag_approx_thres = False  (exact threshold via grid search)
-    - Treat the sampled direction as fixed and march outward from the reference
-      along that direction using a dense grid of step sizes (vector lengths).
-    - For each candidate comparison stimulus, evaluate the WPPM observer to get
-      p(correct) for the oddity task.
-    - Pick the candidate whose p(correct) is closest to the model's target
-      threshold performance (e.g., 66.7% correct), and use that point as the
-      "threshold comparison" for this (ref, direction) pair.
-    - Add Gaussian jitter around this threshold point (scaled by the
-      ref-to-threshold distance) to generate the trial's comparison stimulus.
-
-(2) flag_approx_thres = True  (fast threshold approximation via covariance scaling)
-    - Instead of searching over step sizes, approximate the threshold contour
-      using the model's predicted sensory-noise covariance at the reference.
-    - For each reference, compute the covariance (Σ) implied by the WPPM, convert
-      Σ into ellipse / ellipsoid parameters (axis lengths and rotation angles),
-      and enlarge the axes by a scalar factor.
-    - This scalar ("Sigma_scaler") is chosen so that a displacement to the enlarged
-      ellipse / ellipsoid boundary corresponds approximately to the target threshold
-      performance. It is computed once by simulating the oddity observer with unit
-      covariance and finding the scale that yields the target p(correct).
-    - Given the sampled direction, compute the distance from the ellipse center
-      to the boundary along that direction, yielding an approximate threshold point.
-    - As in the exact method, add Gaussian jitter around that threshold point to
-      generate the final comparison stimulus.
-
-In both approaches, if `flag_sim_resp` is True, the response is then simulated by
-evaluating the model-predicted p(correct) for each (ref, comp) pair and sampling a
-Bernoulli response (1 = correct, 0 = incorrect). Otherwise the responses stay NaN:
-the experiment's fallback trials only need the stimuli. The stimuli are the same
-either way.
+Responses and use (`flag_sim_resp`):
+  • True: a Bernoulli response per trial from the WPPM's p(correct), for fitting.
+    Output: xref, x1, y.
+  • False: y stays NaN; for the experiment's fallback trials, so the trials are
+    also split into per-session pools (Sobol_xref, Sobol_x1; see Section 6).
+The stimuli are the same either way.
 
 """
 
@@ -73,11 +52,11 @@ base_dir = get_path("dropbox_root_mac_elps")
 # -----------------------------------------------------------
 # 1. Settings
 # -----------------------------------------------------------
-rnd_seed = 800             # RNG seed for reproducible NumPy-side randomness
-fixed_ref = False          # True: references on a fixed grid; False: Sobol-sampled references
-num_grid_pts = 7           # fixed_ref only: grid points per dimension
-nSims = 25000              # total number of simulated trials;
-                           # with fixed_ref, it must be divisible by num_grid_pts**ndims
+rnd_seed = 1             # RNG seed for reproducible NumPy-side randomness
+num_grid_pts = None        # references: None = Sobol-sampled; an integer = fixed grid with that many points per dimension
+fixed_ref = num_grid_pts is not None
+nSims = 21892              # total number of simulated trials;
+                           # with a grid, it must be divisible by num_grid_pts**ndims
 jitter = 0.3               # relative jitter level (sensible range: 0.1 - 0.5)
 # Threshold placement:
 #   - True: fast threshold approximation via covariance scaling
@@ -85,20 +64,20 @@ jitter = 0.3               # relative jitter level (sensible range: 0.1 - 0.5)
 #   - False: exact threshold search via dense grid evaluation along each direction
 #       (can be memory-intensive; large nSims may exhaust RAM).
 flag_approx_thres = True
-# Simulate a binary response per trial from the ground-truth model's p(correct).
-# Not needed for the experiment's fallback trials; slow for large nSims.
+# Responses, which also set what the file is for:
+#   - True: simulate a binary response per trial from the ground-truth model's
+#     p(correct), to fit the model to these trials.
+#   - False: no responses (y stays NaN); the trials are the experiment's fallback
+#     trials, so they are also split into per-session pools (Section 6).
 flag_sim_resp = False
-flag_plot = True           # plot the trial placement
 
-# To slot these simulated Sobol trials into the real experiment as "fallback"
-# trials, they are split into session-sized chunks. This is meant for Sobol
-# references: with fixed_ref, each session would get only a contiguous subset of
-# the grid references.
-flag_use_in_expt = True
-nSessions = 50             # number of sessions to split the trials into (often more than are used)
+# Experiment fallback trials only (flag_sim_resp = False): number of per-session
+# pools (often more than are used). Meant for Sobol references: with a grid, each
+# session would get only a contiguous subset of the grid references.
+nSessions = 1
 # Every session gets the same number of fallback trials, so nSims must divide evenly.
 # Checked here so a mismatch fails before the simulation runs.
-if flag_use_in_expt and nSims % nSessions != 0:
+if not flag_sim_resp and nSims % nSessions != 0:
     raise ValueError(
         f"nSims ({nSims}) must be divisible by nSessions ({nSessions}) "
         "to split trials evenly across sessions."
@@ -117,9 +96,6 @@ gt_file_path = os.path.join(file_dir, file_name)
 # -----------------------------------------------------------
 with open(gt_file_path, "rb") as f:
     gt_Wishart = pickled.load(f)
-# Use a tiny bandwidth to make smoothing of the simulated choice probability negligible.
-# The fit file is a dict; the bandwidth lives on the model-prediction object.
-gt_Wishart['model_pred_Wishart'].opt_params['bandwidth'] = 1e-8
 
 color_thres_data = gt_Wishart["color_thres_data"]
 ndims = color_thres_data.color_dimension   # 2 for isoluminant; 3 for RGB cube
@@ -174,6 +150,15 @@ file_stem = f"SimTrialData_nonadaptive_{expt_dims}DExpt_{plane_tag}{thres_tag}{g
     f"{resp_tag}{nSims}total_jitter{jitter}_seed{rnd_seed}"
 print(f"Output file stem: {file_stem}")
 
+# The name doesn't record the ground truth, so a run can match an existing file,
+# including a participant's experiment file. Asked here, before the simulation runs.
+output_file = os.path.join(output_fileDir, f"{file_stem}.pkl")
+if os.path.exists(output_file):
+    answer = input(f"{output_file} already exists. Overwrite it? [y/N] ")
+    if answer.strip().lower() != 'y':
+        raise FileExistsError(f"Kept the existing file: {output_file}. "
+                              "Change rnd_seed or nSims to save under a new name.")
+
 #%%
 # -----------------------------------------------------------
 # 4. Simulate trials
@@ -195,7 +180,7 @@ y = sim_trial.sim["resp_binary"]
 # 5. Visualize
 # -----------------------------------------------------------
 pltSettings_base = PlotSettingsBase(fig_dir=output_figDir, fontsize=8)
-
+flag_plot = True           # plot the trial placement
 if flag_plot:
     if ndims == 2:
         ref_bounds = [ref_sobol_lb[0], ref_sobol_ub[0]]
@@ -230,8 +215,14 @@ if flag_plot:
 # -----------------------------------------------------------
 # 6. Save
 # -----------------------------------------------------------
-if flag_use_in_expt:
-    # Split the trials into sessions: (nSessions, nTrials_per_session, ndims)
+# xref, x1, y: all trials, in order; what a fit to these simulated trials uses.
+# Sobol_xref, Sobol_x1 (experiment files only, flag_sim_resp = False): the same
+# trials split into per-session pools of fallback trials, (nSessions,
+# nTrials_per_session, ndims). The experiment reads only these: each session loads
+# its own row (LoadExptInfo.load_pregenerated_Sobol) and uses trials from the start
+# of it as needed; the rest of the pool goes unused. Experiment files therefore
+# store the trials twice (a few MB extra).
+if not flag_sim_resp:
     nTrials_per_session = nSims // nSessions
     Sobol_xref = xref.reshape(nSessions, nTrials_per_session, ndims)
     Sobol_x1 = x1.reshape(nSessions, nTrials_per_session, ndims)
@@ -247,5 +238,5 @@ vars_dict = {'gt_file_path': gt_file_path,
              'Sobol_xref': Sobol_xref,
              'Sobol_x1': Sobol_x1,
              }
-with open(os.path.join(output_fileDir, f"{file_stem}.pkl"), 'wb') as f:
+with open(output_file, 'wb') as f:
     pickled.dump(vars_dict, f)

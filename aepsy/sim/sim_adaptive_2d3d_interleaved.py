@@ -86,14 +86,11 @@ if stim_dims == 2:
 # Load Wishart model fits
 coloralg = 'CIE1994'
 num_grid_pts = 5 #5 or 7
-color_thres_data.load_CIE_data(CIE_version = coloralg, num_grid_pts=num_grid_pts)
-color_thres_data.load_model_fits(CIE_version = coloralg)  
+color_thres_data.load_model_fits(CIE_version = coloralg)
 
 # Retrieve specific data from Wishart_data
 gt_Wishart  = color_thres_data.get_data(f'model_pred_Wishart_grid{num_grid_pts}',
                                         dataset = 'Wishart_data')
-# Use a tiny bandwidth to make smoothing of the simulated choice probability negligible.
-gt_Wishart.opt_params['bandwidth'] = 1e-8
 
 grid = color_thres_data.get_data(f'grid{num_grid_pts}',
                                  dataset = 'Wishart_data')

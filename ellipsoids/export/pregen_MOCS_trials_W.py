@@ -4,6 +4,31 @@
 Created on Mon Jan 27 22:12:55 2025
 
 @author: fangfang
+
+Pregenerate MOCS validation trials, using a WPPM fit (selected in a file dialog) as
+the ground truth. Used for the experiment's MOCS files (one per participant, by seed)
+and, with simulated responses, for simulated MOCS datasets.
+
+Conditions and levels:
+  • nRefs references (the first at the center) and one direction each, Sobol-sampled;
+    `sobol_seed` sets the draw.
+  • Per reference, nLevels - 1 levels evenly spaced up to the distance where the WPPM's
+    p(correct) is closest to t_pC (found on a 100-step grid), plus one easy level at
+    scaler_s times that distance.
+  • If any comparison falls outside [-1, 1], the seed goes up by 1 and everything is
+    redone (sobol_seed_success is the seed used).
+
+Trials: trials_per_level per level. The shuffled order (MOCS_xref_shuffled,
+MOCS_x1_shuffled) is in rounds of nRefs * nLevels trials, each with every
+(reference, level) pair once. The experiment reads only these, in consecutive blocks
+per session (LoadExptInfo.load_pregenerated_MOCS); later rounds may go unused.
+
+Responses (`flag_sim_resp`):
+  • False: NaN; for the experiment.
+  • True: a Bernoulli draw per trial from the WPPM's p(correct) (no seed); the file
+    name gets "_simResp". Stored unshuffled, aligned with refStimulus/compStimulus.
+The stimuli are the same either way. An existing output file is overwritten only if
+you confirm.
 """
 
 import matplotlib.pyplot as plt
@@ -30,6 +55,13 @@ from plotting.visualize_MOCS import PlotCondSettings, MOCSConditionsVisualizatio
 stim_dims = 3
 baseDir = get_path("dropbox_root_mac")
 subfolder_name = 'Isoluminant plane' if stim_dims == 2 else '3D'
+
+# Responses, which also set what the file is for:
+#   - True: simulate binary responses from the ground-truth fit's p(correct), for
+#     simulated datasets (e.g. to validate a fit); the file name gets "_simResp".
+#   - False: no responses (they stay NaN); the trials are for the experiment, which
+#     uses only the stimuli (MOCS_xref_shuffled, MOCS_x1_shuffled).
+flag_sim_resp = False
 
 #-----------------------------------------------------
 # SECTION 1: load files and define the ground truth
@@ -75,7 +107,7 @@ num_trials = 300
 nLevels = 12              # number of stimulus levels along the chosen chromatic direction
 trials_per_level = num_trials // nLevels  # repeats per level (e.g., 20)
 nRefs = 20                # number of MOCS validation conditions (e.g., 25 in the eLife paper)
-sobol_seed = 1000          # seed for reproducible Sobol sampling
+sobol_seed = 1          # seed for reproducible Sobol sampling
 
 # Define the target performance level (pC) to determine at which stimulus 
 # intensity we achieve this performance.
@@ -89,6 +121,22 @@ nVec_len = 100
 
 # Generate an evenly spaced set of steps from 0 to the full unit vector length
 unit_Vec = np.linspace(0, 1, nVec_len)
+
+# Shared name of the figure and data files. Files with simulated responses are marked;
+# files without keep the experiments' name, so a run with the same ground truth and
+# seed would replace a participant's MOCS file. Asked here, before the trials are made.
+resp_tag = '_simResp' if flag_sim_resp else ''
+ttl = color_thres_data.plane_2D if stim_dims == 2 else 'RGB cube'
+file_stem = f'Sim{stim_dims}dTask_colorDiscrimination_{ttl}_MOCStrials_'+\
+            f'{nRefs}refs_{nLevels}levels_{trials_per_level}trialsPerLevel_'+\
+            f'gtSub{SUBJ_gt_Wishart}_seed{sobol_seed}{resp_tag}'
+output_file = f'{file_stem}.pkl'
+full_path_output = os.path.join(output_fileDir, output_file)
+if os.path.exists(full_path_output):
+    answer = input(f"{full_path_output} already exists. Overwrite it? [y/N] ")
+    if answer.strip().lower() != 'y':
+        raise FileExistsError(f"Kept the existing file: {full_path_output}. "
+                              "Change sobol_seed to save under a new name.")
     
 # Some Sobol draws can place comparison stimuli outside gamut bounds after scaling.
 # If that happens, increment the Sobol seed and resample until a valid set is found.
@@ -207,15 +255,16 @@ while True:
             )
             
             for j in range(nLevels):
-                # Simulate binary responses based on the predicted probability of choosing x1
-                sim_resp_n, pC_mean_n = sim_MOCS_trials.sim_binary_trials(
-                    pX1_Wishart_stim[i][j], trials_per_level
-                )
-
-                # Store the simulated responses
                 idx_lb = j * trials_per_level  # Lower index for this level
                 idx_ub = (j + 1) * trials_per_level  # Upper index for this level
-                responses[i, idx_lb: idx_ub] = sim_resp_n
+
+                if flag_sim_resp:
+                    # Simulate binary responses based on the predicted probability of
+                    # choosing x1 (their own generator, so the stimuli don't depend on it)
+                    sim_resp_n, pC_mean_n = sim_MOCS_trials.sim_binary_trials(
+                        pX1_Wishart_stim[i][j], trials_per_level
+                    )
+                    responses[i, idx_lb: idx_ub] = sim_resp_n
 
                 # Repeat reference stimuli for the given number of trials
                 refStimulus[i, idx_lb: idx_ub] = np.tile(
@@ -256,11 +305,8 @@ if flag_debugplots:
 pltSettings_base = PlotSettingsBase(fig_dir=output_figDir, fontsize=10)
 plotCond_Settings = replace(PlotCondSettings(), **pltSettings_base.__dict__)
 MOCS_cond_vis = MOCSConditionsVisualization(settings = pltSettings_base, save_fig = True)
+fig_name = f'{file_stem}.pdf'
 if stim_dims == 2:
-    ttl = color_thres_data.plane_2D
-    fig_name = f'Sim{stim_dims}dTask_colorDiscrimination_{ttl}_'+\
-               f'MOCStrials_{nRefs}refs_{nLevels}levels_{trials_per_level}trialsPerLevel_'+\
-               f'gtSub{SUBJ_gt_Wishart}_seed{sobol_seed}.pdf'
     plotCond_Settings = replace(plotCond_Settings, 
                                 fig_size = (5,5), 
                                 ticks = np.linspace(-0.7, 0.7, 5),
@@ -272,12 +318,8 @@ if stim_dims == 2:
                                        settings = plotCond_Settings
                                        )
 else:
-    ttl = 'RGB cube'
-    fig_name = f'Sim{stim_dims}dTask_colorDiscrimination_{ttl}_MOCStrials_'+\
-              f'{nRefs}refs_{nLevels}levels_{trials_per_level}trialsPerLevel_'+\
-              f'gtSub{SUBJ_gt_Wishart}_seed{sobol_seed}.pdf'
-    plotCond_Settings = replace(plotCond_Settings, 
-                                fig_size = (5.5, 6), 
+    plotCond_Settings = replace(plotCond_Settings,
+                                fig_size = (5.5, 6),
                                 ticks = np.linspace(-0.7, 0.7, 5),
                                 ref_ms = 50,
                                 fig_name = fig_name
@@ -362,9 +404,7 @@ if flag_debugplots:
 #-------------------------------------------------------------------------- 
 # SECTION 7: Save the data
 #--------------------------------------------------------------------------
-output_file = fig_name[:-4] + '.pkl'
-full_path_output = os.path.join(output_fileDir, output_file)
-
+# output_file and full_path_output are set in Section 2, before the overwrite check
 variable_names = ['stim_dims','SUBJ_gt_Wishart','full_path_gt','color_thres_data',
                   'model_pred_Wishart', 'num_trials', 'nLevels', 'trials_per_level',
                   'nRefs', 'sobol_seed','t_pC', 'scaler_s', 'nVec_len', 'unit_Vec',
